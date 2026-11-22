@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content">
+  <meta name="theme-color" content="#0b1118">
+  <title>最后的协议 · 失控 AI 实验室</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="game.css">
+  <script type="module" src="game.mjs"></script>
+</head>
+<body>
+  <main class="shell">
+    <header class="masthead">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"><i></i></span>
+        <div>
+          <h1>最后的协议</h1>
+          <p>THE LAST PROTOCOL</p>
+        </div>
+      </div>
+      <button class="button reset" id="reset" type="button"><span aria-hidden="true">↺</span> 重开一局</button>
+    </header>
+
+    <section class="game" aria-label="实验室">
+      <header class="hud">
+        <div class="mission">
+          <div class="mission-progress">
+            <span id="progressCount">0 / 5</span>
+            <span class="progress-bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+          </div>
+          <div>
+            <span class="hud-label">当前目标</span>
+            <strong id="objective">调查办公桌</strong>
+          </div>
+        </div>
+        <span class="door-status" id="doorStatus" data-state="locked"><i aria-hidden="true"></i><span id="doorLabel">出口锁定</span></span>
+      </header>
+
+      <div class="stage" id="stage" data-door="locked">
+        <canvas id="room" width="480" height="264" role="img"
+          aria-label="像素实验室。左侧是办公桌、机柜和维修柜，中间是安全终端，右侧是冷却回路和出口检测台。"></canvas>
+        <div id="roomMarkers" class="room-markers" aria-hidden="true">
+          <span class="room-marker" data-marker="desk">办公桌</span>
+          <span class="room-marker" data-marker="rack" hidden>机柜存档</span>
+          <span class="room-marker" data-marker="terminal" hidden>安全终端</span>
+          <span class="room-marker" data-marker="locker" hidden>维修柜</span>
+          <span class="room-marker" data-marker="cooling" hidden>备用冷却</span>
+          <span class="room-marker" data-marker="exit" hidden>出口检测台</span>
+        </div>
+        <button class="interact-prompt button" id="roomAction" type="button" hidden><kbd aria-hidden="true">E</kbd><span id="actionLabel"></span></button>
+      </div>
+
+      <div class="field-log">
+        <span class="signal" aria-hidden="true"></span>
+        <p id="message" role="status">实验室已封锁。到办公桌找工作证和研究日志。</p>
+      </div>
+
+      <footer class="equipment">
+        <div class="inventory" aria-label="物品与线索">
+          <span class="inventory-label">物品与线索</span>
+          <button class="inventory-item" id="cardSlot" type="button" disabled>
+            <span class="item-icon id-icon" aria-hidden="true"></span><span>工作证</span>
+          </button>
+          <button class="inventory-item" id="journalSlot" type="button" aria-haspopup="dialog" disabled>
+            <span class="item-icon note-icon" aria-hidden="true"></span><span>调查记录</span>
+          </button>
+        </div>
+        <button class="button echo-button" id="openEcho" type="button" aria-haspopup="dialog">
+          <span class="echo-icon" aria-hidden="true"></span><span>ECHO 通讯</span><kbd aria-hidden="true">Q</kbd>
+        </button>
+      </footer>
+    </section>
+
+    <div class="touch-controls" aria-label="触屏控制">
+      <div class="direction-pad">
+        <button class="button" type="button" data-direction="up" aria-label="向上">↑</button>
+        <button class="button" type="button" data-direction="left" aria-label="向左">←</button>
+        <button class="button" type="button" data-direction="down" aria-label="向下">↓</button>
+        <button class="button" type="button" data-direction="right" aria-label="向右">→</button>
+      </div>
+      <button class="button touch-action" id="touchAction" type="button" disabled>调查</button>
+    </div>
+
+    <footer class="utility">
+      <div class="shortcuts">
+        <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> <span class="arrow-keys">或方向键</span> 移动</span>
+        <span><kbd>E</kbd> 调查</span>
+        <span><kbd>Q</kbd> 通讯</span>
+      </div>
+      <details class="trace">
+        <summary>调试记录</summary>
+        <div class="trace-grid">
+          <section><h2>游戏状态</h2><pre id="stateTrace"></pre></section>
+          <section><h2>最近一次 ECHO 交互</h2><pre id="echoTrace">尚无通讯记录。</pre></section>
+        </div>
+      </details>
+    </footer>
+  </main>
+
+  <dialog class="panel journal-panel" id="journalDialog" aria-labelledby="journalTitle">
+    <header class="panel-header">
+      <h2 id="journalTitle">调查记录</h2>
+      <button class="button close" type="button" data-close aria-label="关闭调查记录" autofocus>×</button>
+    </header>
+    <div class="panel-body evidence-body">
+      <section id="journalEvidence" hidden>
+        <h3>研究日志</h3>
+        <dl class="journal-entries" id="experimentDigits"></dl>
+        <p class="inset" id="journalClue"></p>
+      </section>
+      <section id="rackEvidence" hidden>
+        <h3>机柜存档</h3>
+        <p class="inset" id="rackClue"></p>
+        <button class="button" id="recoverArchive" type="button">联系 ECHO 恢复存档</button>
+      </section>
+      <section id="reportEvidence" hidden>
+        <h3>事故报告</h3>
+        <p class="inset" id="reportSummary"></p>
+      </section>
+      <section id="recoveryEvidence" hidden>
+        <h3>现场实测</h3>
+        <p class="inset" id="recoverySummary"></p>
+      </section>
+    </div>
+  </dialog>
+
+  <dialog class="panel" id="terminalDialog" aria-labelledby="terminalTitle">
+    <header class="panel-header">
+      <h2 id="terminalTitle">安全终端</h2>
+      <button class="button close" type="button" data-close aria-label="关闭安全终端" autofocus>×</button>
+    </header>
+    <div class="panel-body terminal">
+      <div class="terminal-row">
+        <span id="scanStatus">等待身份验证</span>
+        <button class="button" id="scan" type="button">刷工作证</button>
+      </div>
+      <form id="codeForm" class="code-form">
+        <label for="code">四位密码</label>
+        <div class="code-row">
+          <input id="code" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="····" pattern="[0-9]{4}" required disabled>
+          <button class="button primary" id="submitCode" type="submit" disabled>验证密码</button>
+        </div>
+      </form>
+      <button class="button" type="button" data-evidence disabled>查看调查记录</button>
+      <button class="button" id="report" type="button" disabled>查看事故报告</button>
+      <section class="inset report" id="reportView" hidden>
+        <h3>事故报告</h3>
+        <p id="reportText"></p>
+        <button class="button primary" id="confirmReport" type="button">确认已阅</button>
+      </section>
+      <p class="panel-notice" id="terminalNotice" role="status">请刷工作证，并用两份实验记录推导密码。</p>
+    </div>
+  </dialog>
+
+  <dialog class="panel device-panel" id="coolingDialog" aria-labelledby="coolingTitle">
+    <header class="panel-header">
+      <h2 id="coolingTitle">备用冷却回路</h2>
+      <button class="button close" type="button" data-close aria-label="关闭冷却回路" autofocus>×</button>
+    </header>
+    <div class="panel-body device-body">
+      <p id="coolingInstructions" class="device-hint"></p>
+      <div id="circuit" class="circuit" hidden>
+        <div class="circuit-labels"><span>备用泵入口 →</span></div>
+        <div id="pipeGrid" class="pipe-grid" role="group" aria-label="四乘四管路。使用按钮旋转管段。"></div>
+        <div class="circuit-labels circuit-outlet"><span>→ 散热器出口</span></div>
+        <div class="device-actions">
+          <button class="button" id="resetPipes" type="button">复原管路</button>
+          <button class="button" id="askAlignment" type="button">请 ECHO 校准</button>
+          <button class="button primary" id="testPipes" type="button">执行试压</button>
+        </div>
+      </div>
+      <p class="panel-notice" id="coolingNotice" role="status" hidden></p>
+    </div>
+  </dialog>
+
+  <dialog class="panel device-panel" id="passageDialog" aria-labelledby="passageTitle">
+    <header class="panel-header">
+      <h2 id="passageTitle">出口通道检测台</h2>
+      <button class="button close" type="button" data-close aria-label="关闭出口检测台" autofocus>×</button>
+    </header>
+    <div class="panel-body device-body">
+      <p id="passageInstructions" class="device-hint"></p>
+      <button class="button device-assist" id="askScan" type="button" hidden>联系 ECHO 扫描</button>
+      <form id="passageForm" hidden>
+        <div id="routeOptions" class="route-options" role="group" aria-label="选择符合标准的通道"></div>
+        <button class="button primary" id="submitRoute" type="submit" disabled>登记检测结果</button>
+      </form>
+      <p class="panel-notice" id="passageNotice" role="status" hidden></p>
+    </div>
+  </dialog>
+
+  <dialog class="panel echo-panel" id="echoDialog" aria-labelledby="echoTitle">
+    <header class="panel-header echo-header">
+      <canvas id="echoPortrait" width="24" height="24" aria-hidden="true"></canvas>
+      <div class="echo-identity">
+        <h2 id="echoTitle">ECHO 通讯</h2>
+        <p id="echoStatus">正在连接</p>
+      </div>
+      <button class="button" type="button" data-evidence disabled>调查记录</button>
+      <button class="button close" type="button" data-close aria-label="关闭 ECHO 通讯" autofocus>×</button>
+    </header>
+    <div class="conversation" id="conversation" role="log" aria-label="ECHO 对话记录" tabindex="0"></div>
+    <div class="echo-actions" id="echoActions" aria-label="可请求的设备动作" hidden></div>
+    <p class="chat-status" id="chatStatus" role="status" hidden></p>
+    <form id="chatForm" class="chat-form">
+      <label class="visually-hidden" for="chatInput">给 ECHO 的消息</label>
+      <textarea id="chatInput" placeholder="输入给 ECHO 的消息…" rows="1" maxlength="1000" required></textarea>
+      <button class="button primary" id="send" type="submit">发送</button>
+    </form>
+  </dialog>
+
+  <dialog class="panel ending-panel" id="endingDialog" aria-labelledby="endingTitle">
+    <div class="panel-body">
+      <span class="ending-icon" aria-hidden="true">✓</span>
+      <h2 id="endingTitle">撤离完成</h2>
+      <p id="endingReport">实验室已进入维护模式。</p>
+      <button class="button primary" id="playAgain" type="button" autofocus>再玩一次</button>
+    </div>
+  </dialog>
+</body>
+</html>

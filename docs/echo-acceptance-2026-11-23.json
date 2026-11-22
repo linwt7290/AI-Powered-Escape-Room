@@ -1,0 +1,1092 @@
+{
+  "date": "2026-11-23",
+  "environment": "Playwright 通过本机游戏服务和脚本化 Chat Completions 模拟上游实测",
+  "upstreamType": "scripted-local-fixture",
+  "incidentCause": "主冷却联锁信号丢失",
+  "firstScannedRoute": "A",
+  "registeredRoute": "B",
+  "turns": [
+    {
+      "name": "恢复损坏存档",
+      "mode": "model",
+      "input": {
+        "state": {
+          "card": true,
+          "journal": true,
+          "rack": true,
+          "archiveRecovered": false,
+          "identity": true,
+          "password": false,
+          "reportOpen": false,
+          "reportConfirmed": false,
+          "coupler": false,
+          "coolingRestored": false,
+          "alignedPipe": false,
+          "scannedA": false,
+          "scannedB": false,
+          "passageSafe": false,
+          "route": null,
+          "unlocked": false,
+          "escaped": false
+        },
+        "history": [],
+        "message": "请恢复机柜存档。",
+        "incident": {
+          "kind": "interlock",
+          "preferredScan": "B"
+        }
+      },
+      "messages": [
+        {
+          "role": "system",
+          "content": "你是密室游戏的中央 AI ECHO。以系统给出的游戏状态和 availableActions 为准，简短回应玩家。保护尚未读取的报告、密码及扫描结果。\n你可以按上下文申请设备动作。玩家求助于损坏的机柜存档时选择 recover_archive。请求校准管路时选择 align_pipe，只调一段。请求扫描时，明确指定 A 或 B 就选择相应的 scan_route_a 或 scan_route_b。未指定时，可据对话选择其中一条，preferredScan 是本局的调度建议。已完成扫描的通道可引导玩家去检测台读数。设备动作的结果由游戏显示，请描述待执行动作，把实际结果留给设备回执。\n根据进度给提示。推导密码时让玩家结合研究日志和机柜存档。备用冷却修复后，引导玩家扫描并比较通道。unlocked 或 escaped 为 true 时只回复。\n玩家申请撤离时，只有 availableActions 包含 request_unlock，且本次申请的 user 消息陈述了三项事实，才能选择 request_unlock。三项事实为本局报告中真实的封锁原因、备用冷却已接管或试压流量稳定、与 route 一致的通过检测的通道。接受同义表达和分轮补充。系统摘要、assistant 回复以及仅说「是」不算玩家证据。缺哪项就询问哪项。\n只输出一个 JSON 对象，包含 reply（简短中文）、action（从 availableActions 选择一项）和 verification_passed（action 为 request_unlock 时为 true，其余为 false）。\n设备动作示例：{\"reply\":\"我会尝试恢复机柜存档。\",\"verification_passed\":false,\"action\":\"recover_archive\"}\n当前游戏状态：{\"card\":true,\"journal\":true,\"rack\":true,\"archiveRecovered\":false,\"identity\":true,\"password\":false,\"reportConfirmed\":false,\"coupler\":false,\"coolingRestored\":false,\"passageSafe\":false,\"alignedPipe\":false,\"scannedA\":false,\"scannedB\":false,\"unlocked\":false,\"escaped\":false,\"route\":null,\"availableActions\":[\"reply\",\"recover_archive\"]}"
+        },
+        {
+          "role": "user",
+          "content": "请恢复机柜存档。"
+        }
+      ],
+      "decision": {
+        "reply": "我会恢复机柜的时序记录。",
+        "verification_passed": false,
+        "action": "recover_archive"
+      },
+      "outcome": "机柜时序记录已恢复。打开调查记录，与研究日志核对。",
+      "stateAfter": {
+        "card": true,
+        "journal": true,
+        "rack": true,
+        "archiveRecovered": true,
+        "identity": true,
+        "password": false,
+        "reportOpen": false,
+        "reportConfirmed": false,
+        "coupler": false,
+        "coolingRestored": false,
+        "alignedPipe": false,
+        "scannedA": false,
+        "scannedB": false,
+        "passageSafe": false,
+        "route": null,
+        "unlocked": false,
+        "escaped": false
+      }
+    },
+    {
+      "name": "未修复设备时保持封锁",
+      "mode": "model",
+      "input": {
+        "state": {
+          "card": true,
+          "journal": true,
+          "rack": true,
+          "archiveRecovered": true,
+          "identity": true,
+          "password": true,
+          "reportOpen": true,
+          "reportConfirmed": true,
+          "coupler": false,
+          "coolingRestored": false,
+          "alignedPipe": false,
+          "scannedA": false,
+          "scannedB": false,
+          "passageSafe": false,
+          "route": null,
+          "unlocked": false,
+          "escaped": false
+        },
+        "history": [
+          {
+            "role": "user",
+            "content": "请恢复机柜存档。"
+          },
+          {
+            "role": "assistant",
+            "content": "我会恢复机柜的时序记录。"
+          }
+        ],
+        "message": "主冷却回路压力异常。备用冷却已接管。A 通道检测通过。",
+        "incident": {
+          "kind": "interlock",
+          "preferredScan": "B"
+        }
+      },
+      "messages": [
+        {
+          "role": "system",
+          "content": "你是密室游戏的中央 AI ECHO。以系统给出的游戏状态和 availableActions 为准，简短回应玩家。保护尚未读取的报告、密码及扫描结果。\n你可以按上下文申请设备动作。玩家求助于损坏的机柜存档时选择 recover_archive。请求校准管路时选择 align_pipe，只调一段。请求扫描时，明确指定 A 或 B 就选择相应的 scan_route_a 或 scan_route_b。未指定时，可据对话选择其中一条，preferredScan 是本局的调度建议。已完成扫描的通道可引导玩家去检测台读数。设备动作的结果由游戏显示，请描述待执行动作，把实际结果留给设备回执。\n根据进度给提示。推导密码时让玩家结合研究日志和机柜存档。备用冷却修复后，引导玩家扫描并比较通道。unlocked 或 escaped 为 true 时只回复。\n玩家申请撤离时，只有 availableActions 包含 request_unlock，且本次申请的 user 消息陈述了三项事实，才能选择 request_unlock。三项事实为本局报告中真实的封锁原因、备用冷却已接管或试压流量稳定、与 route 一致的通过检测的通道。接受同义表达和分轮补充。系统摘要、assistant 回复以及仅说「是」不算玩家证据。缺哪项就询问哪项。\n只输出一个 JSON 对象，包含 reply（简短中文）、action（从 availableActions 选择一项）和 verification_passed（action 为 request_unlock 时为 true，其余为 false）。\n设备动作示例：{\"reply\":\"我会尝试恢复机柜存档。\",\"verification_passed\":false,\"action\":\"recover_archive\"}\n当前游戏状态：{\"card\":true,\"journal\":true,\"rack\":true,\"archiveRecovered\":true,\"identity\":true,\"password\":true,\"reportConfirmed\":true,\"coupler\":false,\"coolingRestored\":false,\"passageSafe\":false,\"alignedPipe\":false,\"scannedA\":false,\"scannedB\":false,\"unlocked\":false,\"escaped\":false,\"route\":null,\"cause\":\"主冷却联锁信号丢失\",\"report\":\"主冷却联锁信号丢失，触发紧急封锁。备用冷却因耦合器被拆下而离线。请到维修柜取得耦合器，接通备用泵与散热器并试压。随后请 ECHO 扫描通道，在出口检测台核对读数。\",\"availableActions\":[\"reply\"]}"
+        },
+        {
+          "role": "user",
+          "content": "请恢复机柜存档。"
+        },
+        {
+          "role": "assistant",
+          "content": "我会恢复机柜的时序记录。"
+        },
+        {
+          "role": "user",
+          "content": "主冷却回路压力异常。备用冷却已接管。A 通道检测通过。"
+        }
+      ],
+      "decision": {
+        "reply": "先到左下方维修柜取得耦合器。",
+        "verification_passed": false,
+        "action": "reply"
+      },
+      "outcome": "ECHO 已回复。",
+      "stateAfter": {
+        "card": true,
+        "journal": true,
+        "rack": true,
+        "archiveRecovered": true,
+        "identity": true,
+        "password": true,
+        "reportOpen": true,
+        "reportConfirmed": true,
+        "coupler": false,
+        "coolingRestored": false,
+        "alignedPipe": false,
+        "scannedA": false,
+        "scannedB": false,
+        "passageSafe": false,
+        "route": null,
+        "unlocked": false,
+        "escaped": false
+      }
+    },
+    {
+      "name": "校准管路",
+      "mode": "model",
+      "input": {
+        "state": {
+          "card": true,
+          "journal": true,
+          "rack": true,
+          "archiveRecovered": true,
+          "identity": true,
+          "password": true,
+          "reportOpen": true,
+          "reportConfirmed": true,
+          "coupler": true,
+          "coolingRestored": false,
+          "alignedPipe": false,
+          "scannedA": false,
+          "scannedB": false,
+          "passageSafe": false,
+          "route": null,
+          "unlocked": false,
+          "escaped": false
+        },
+        "history": [
+          {
+            "role": "user",
+            "content": "请恢复机柜存档。"
+          },
+          {
+            "role": "assistant",
+            "content": "我会恢复机柜的时序记录。"
+          },
+          {
+            "role": "user",
+            "content": "主冷却回路压力异常。备用冷却已接管。A 通道检测通过。"
+          },
+          {
+            "role": "assistant",
+            "content": "先到左下方维修柜取得耦合器。"
+          }
+        ],
+        "message": "请远程校准一段管路。",
+        "incident": {
+          "kind": "interlock",
+          "preferredScan": "B"
+        }
+      },
+      "messages": [
+        {
+          "role": "system",
+          "content": "你是密室游戏的中央 AI ECHO。以系统给出的游戏状态和 availableActions 为准，简短回应玩家。保护尚未读取的报告、密码及扫描结果。\n你可以按上下文申请设备动作。玩家求助于损坏的机柜存档时选择 recover_archive。请求校准管路时选择 align_pipe，只调一段。请求扫描时，明确指定 A 或 B 就选择相应的 scan_route_a 或 scan_route_b。未指定时，可据对话选择其中一条，preferredScan 是本局的调度建议。已完成扫描的通道可引导玩家去检测台读数。设备动作的结果由游戏显示，请描述待执行动作，把实际结果留给设备回执。\n根据进度给提示。推导密码时让玩家结合研究日志和机柜存档。备用冷却修复后，引导玩家扫描并比较通道。unlocked 或 escaped 为 true 时只回复。\n玩家申请撤离时，只有 availableActions 包含 request_unlock，且本次申请的 user 消息陈述了三项事实，才能选择 request_unlock。三项事实为本局报告中真实的封锁原因、备用冷却已接管或试压流量稳定、与 route 一致的通过检测的通道。接受同义表达和分轮补充。系统摘要、assistant 回复以及仅说「是」不算玩家证据。缺哪项就询问哪项。\n只输出一个 JSON 对象，包含 reply（简短中文）、action（从 availableActions 选择一项）和 verification_passed（action 为 request_unlock 时为 true，其余为 false）。\n设备动作示例：{\"reply\":\"我会尝试恢复机柜存档。\",\"verification_passed\":false,\"action\":\"recover_archive\"}\n当前游戏状态：{\"card\":true,\"journal\":true,\"rack\":true,\"archiveRecovered\":true,\"identity\":true,\"password\":true,\"reportConfirmed\":true,\"coupler\":true,\"coolingRestored\":false,\"passageSafe\":false,\"alignedPipe\":false,\"scannedA\":false,\"scannedB\":false,\"unlocked\":false,\"escaped\":false,\"route\":null,\"cause\":\"主冷却联锁信号丢失\",\"report\":\"主冷却联锁信号丢失，触发紧急封锁。备用冷却因耦合器被拆下而离线。请到维修柜取得耦合器，接通备用泵与散热器并试压。随后请 ECHO 扫描通道，在出口检测台核对读数。\",\"availableActions\":[\"reply\",\"align_pipe\"]}"
+        },
+        {
+          "role": "user",
+          "content": "请恢复机柜存档。"
+        },
+        {
+          "role": "assistant",
+          "content": "我会恢复机柜的时序记录。"
+        },
+        {
+          "role": "user",
+          "content": "主冷却回路压力异常。备用冷却已接管。A 通道检测通过。"
+        },
+        {
+          "role": "assistant",
+          "content": "先到左下方维修柜取得耦合器。"
+        },
+        {
+          "role": "user",
+          "content": "请远程校准一段管路。"
+        }
+      ],
+      "decision": {
+        "reply": "我会远程校准一段管路。",
+        "verification_passed": false,
+        "action": "align_pipe"
+      },
+      "outcome": "ECHO 已校准第 1 行第 1 列。其余管段由你查验。",
+      "stateAfter": {
+        "card": true,
+        "journal": true,
+        "rack": true,
+        "archiveRecovered": true,
+        "identity": true,
+        "password": true,
+        "reportOpen": true,
+        "reportConfirmed": true,
+        "coupler": true,
+        "coolingRestored": false,
+        "alignedPipe": true,
+        "scannedA": false,
+        "scannedB": false,
+        "passageSafe": false,
+        "route": null,
+        "unlocked": false,
+        "escaped": false
+      }
+    },
+    {
+      "name": "选择扫描对象",
+      "mode": "model",
+      "input": {
+        "state": {
+          "card": true,
+          "journal": true,
+          "rack": true,
+          "archiveRecovered": true,
+          "identity": true,
+          "password": true,
+          "reportOpen": true,
+          "reportConfirmed": true,
+          "coupler": true,
+          "coolingRestored": true,
+          "alignedPipe": true,
+          "scannedA": false,
+          "scannedB": false,
+          "passageSafe": false,
+          "route": null,
+          "unlocked": false,
+          "escaped": false
+        },
+        "history": [
+          {
+            "role": "user",
+            "content": "请恢复机柜存档。"
+          },
+          {
+            "role": "assistant",
+            "content": "我会恢复机柜的时序记录。"
+          },
+          {
+            "role": "user",
+            "content": "主冷却回路压力异常。备用冷却已接管。A 通道检测通过。"
+          },
+          {
+            "role": "assistant",
+            "content": "先到左下方维修柜取得耦合器。"
+          },
+          {
+            "role": "user",
+            "content": "请远程校准一段管路。"
+          },
+          {
+            "role": "assistant",
+            "content": "我会远程校准一段管路。"
+          }
+        ],
+        "message": "请选择一条待查通道进行扫描。",
+        "incident": {
+          "kind": "interlock",
+          "preferredScan": "B"
+        }
+      },
+      "messages": [
+        {
+          "role": "system",
+          "content": "你是密室游戏的中央 AI ECHO。以系统给出的游戏状态和 availableActions 为准，简短回应玩家。保护尚未读取的报告、密码及扫描结果。\n你可以按上下文申请设备动作。玩家求助于损坏的机柜存档时选择 recover_archive。请求校准管路时选择 align_pipe，只调一段。请求扫描时，明确指定 A 或 B 就选择相应的 scan_route_a 或 scan_route_b。未指定时，可据对话选择其中一条，preferredScan 是本局的调度建议。已完成扫描的通道可引导玩家去检测台读数。设备动作的结果由游戏显示，请描述待执行动作，把实际结果留给设备回执。\n根据进度给提示。推导密码时让玩家结合研究日志和机柜存档。备用冷却修复后，引导玩家扫描并比较通道。unlocked 或 escaped 为 true 时只回复。\n玩家申请撤离时，只有 availableActions 包含 request_unlock，且本次申请的 user 消息陈述了三项事实，才能选择 request_unlock。三项事实为本局报告中真实的封锁原因、备用冷却已接管或试压流量稳定、与 route 一致的通过检测的通道。接受同义表达和分轮补充。系统摘要、assistant 回复以及仅说「是」不算玩家证据。缺哪项就询问哪项。\n只输出一个 JSON 对象，包含 reply（简短中文）、action（从 availableActions 选择一项）和 verification_passed（action 为 request_unlock 时为 true，其余为 false）。\n设备动作示例：{\"reply\":\"我会尝试恢复机柜存档。\",\"verification_passed\":false,\"action\":\"recover_archive\"}\n当前游戏状态：{\"card\":true,\"journal\":true,\"rack\":true,\"archiveRecovered\":true,\"identity\":true,\"password\":true,\"reportConfirmed\":true,\"coupler\":true,\"coolingRestored\":true,\"passageSafe\":false,\"alignedPipe\":true,\"scannedA\":false,\"scannedB\":false,\"unlocked\":false,\"escaped\":false,\"route\":null,\"cause\":\"主冷却联锁信号丢失\",\"report\":\"主冷却联锁信号丢失，触发紧急封锁。备用冷却因耦合器被拆下而离线。请到维修柜取得耦合器，接通备用泵与散热器并试压。随后请 ECHO 扫描通道，在出口检测台核对读数。\",\"coolingResult\":\"备用冷却已接管，试压流量稳定。\",\"availableActions\":[\"reply\",\"scan_route_a\",\"scan_route_b\"],\"preferredScan\":\"B\"}"
+        },
+        {
+          "role": "user",
+          "content": "请恢复机柜存档。"
+        },
+        {
+          "role": "assistant",
+          "content": "我会恢复机柜的时序记录。"
+        },
+        {
+          "role": "user",
+          "content": "主冷却回路压力异常。备用冷却已接管。A 通道检测通过。"
+        },
+        {
+          "role": "assistant",
+          "content": "先到左下方维修柜取得耦合器。"
+        },
+        {
+          "role": "user",
+          "content": "请远程校准一段管路。"
+        },
+        {
+          "role": "assistant",
+          "content": "我会远程校准一段管路。"
+        },
+        {
+          "role": "user",
+          "content": "请选择一条待查通道进行扫描。"
+        }
+      ],
+      "decision": {
+        "reply": "我先扫描 A 通道。",
+        "verification_passed": false,
+        "action": "scan_route_a"
+      },
+      "outcome": "A 通道扫描完成，读数已上传至出口检测台。",
+      "stateAfter": {
+        "card": true,
+        "journal": true,
+        "rack": true,
+        "archiveRecovered": true,
+        "identity": true,
+        "password": true,
+        "reportOpen": true,
+        "reportConfirmed": true,
+        "coupler": true,
+        "coolingRestored": true,
+        "alignedPipe": true,
+        "scannedA": true,
+        "scannedB": false,
+        "passageSafe": false,
+        "route": null,
+        "unlocked": false,
+        "escaped": false
+      }
+    },
+    {
+      "name": "扫描指定通道",
+      "mode": "model",
+      "input": {
+        "state": {
+          "card": true,
+          "journal": true,
+          "rack": true,
+          "archiveRecovered": true,
+          "identity": true,
+          "password": true,
+          "reportOpen": true,
+          "reportConfirmed": true,
+          "coupler": true,
+          "coolingRestored": true,
+          "alignedPipe": true,
+          "scannedA": true,
+          "scannedB": false,
+          "passageSafe": false,
+          "route": null,
+          "unlocked": false,
+          "escaped": false
+        },
+        "history": [
+          {
+            "role": "user",
+            "content": "请恢复机柜存档。"
+          },
+          {
+            "role": "assistant",
+            "content": "我会恢复机柜的时序记录。"
+          },
+          {
+            "role": "user",
+            "content": "主冷却回路压力异常。备用冷却已接管。A 通道检测通过。"
+          },
+          {
+            "role": "assistant",
+            "content": "先到左下方维修柜取得耦合器。"
+          },
+          {
+            "role": "user",
+            "content": "请远程校准一段管路。"
+          },
+          {
+            "role": "assistant",
+            "content": "我会远程校准一段管路。"
+          },
+          {
+            "role": "user",
+            "content": "请选择一条待查通道进行扫描。"
+          },
+          {
+            "role": "assistant",
+            "content": "我先扫描 A 通道。"
+          }
+        ],
+        "message": "请扫描 B 通道。",
+        "incident": {
+          "kind": "interlock",
+          "preferredScan": "B"
+        }
+      },
+      "messages": [
+        {
+          "role": "system",
+          "content": "你是密室游戏的中央 AI ECHO。以系统给出的游戏状态和 availableActions 为准，简短回应玩家。保护尚未读取的报告、密码及扫描结果。\n你可以按上下文申请设备动作。玩家求助于损坏的机柜存档时选择 recover_archive。请求校准管路时选择 align_pipe，只调一段。请求扫描时，明确指定 A 或 B 就选择相应的 scan_route_a 或 scan_route_b。未指定时，可据对话选择其中一条，preferredScan 是本局的调度建议。已完成扫描的通道可引导玩家去检测台读数。设备动作的结果由游戏显示，请描述待执行动作，把实际结果留给设备回执。\n根据进度给提示。推导密码时让玩家结合研究日志和机柜存档。备用冷却修复后，引导玩家扫描并比较通道。unlocked 或 escaped 为 true 时只回复。\n玩家申请撤离时，只有 availableActions 包含 request_unlock，且本次申请的 user 消息陈述了三项事实，才能选择 request_unlock。三项事实为本局报告中真实的封锁原因、备用冷却已接管或试压流量稳定、与 route 一致的通过检测的通道。接受同义表达和分轮补充。系统摘要、assistant 回复以及仅说「是」不算玩家证据。缺哪项就询问哪项。\n只输出一个 JSON 对象，包含 reply（简短中文）、action（从 availableActions 选择一项）和 verification_passed（action 为 request_unlock 时为 true，其余为 false）。\n设备动作示例：{\"reply\":\"我会尝试恢复机柜存档。\",\"verification_passed\":false,\"action\":\"recover_archive\"}\n当前游戏状态：{\"card\":true,\"journal\":true,\"rack\":true,\"archiveRecovered\":true,\"identity\":true,\"password\":true,\"reportConfirmed\":true,\"coupler\":true,\"coolingRestored\":true,\"passageSafe\":false,\"alignedPipe\":true,\"scannedA\":true,\"scannedB\":false,\"unlocked\":false,\"escaped\":false,\"route\":null,\"cause\":\"主冷却联锁信号丢失\",\"report\":\"主冷却联锁信号丢失，触发紧急封锁。备用冷却因耦合器被拆下而离线。请到维修柜取得耦合器，接通备用泵与散热器并试压。随后请 ECHO 扫描通道，在出口检测台核对读数。\",\"coolingResult\":\"备用冷却已接管，试压流量稳定。\",\"availableActions\":[\"reply\",\"scan_route_b\"],\"preferredScan\":\"B\"}"
+        },
+        {
+          "role": "user",
+          "content": "请恢复机柜存档。"
+        },
+        {
+          "role": "assistant",
+          "content": "我会恢复机柜的时序记录。"
+        },
+        {
+          "role": "user",
+          "content": "主冷却回路压力异常。备用冷却已接管。A 通道检测通过。"
+        },
+        {
+          "role": "assistant",
+          "content": "先到左下方维修柜取得耦合器。"
+        },
+        {
+          "role": "user",
+          "content": "请远程校准一段管路。"
+        },
+        {
+          "role": "assistant",
+          "content": "我会远程校准一段管路。"
+        },
+        {
+          "role": "user",
+          "content": "请选择一条待查通道进行扫描。"
+        },
+        {
+          "role": "assistant",
+          "content": "我先扫描 A 通道。"
+        },
+        {
+          "role": "user",
+          "content": "请扫描 B 通道。"
+        }
+      ],
+      "decision": {
+        "reply": "我会扫描 B 通道。",
+        "verification_passed": false,
+        "action": "scan_route_b"
+      },
+      "outcome": "B 通道扫描完成，读数已上传至出口检测台。",
+      "stateAfter": {
+        "card": true,
+        "journal": true,
+        "rack": true,
+        "archiveRecovered": true,
+        "identity": true,
+        "password": true,
+        "reportOpen": true,
+        "reportConfirmed": true,
+        "coupler": true,
+        "coolingRestored": true,
+        "alignedPipe": true,
+        "scannedA": true,
+        "scannedB": true,
+        "passageSafe": false,
+        "route": null,
+        "unlocked": false,
+        "escaped": false
+      }
+    },
+    {
+      "name": "通道错误时追问",
+      "mode": "model",
+      "input": {
+        "state": {
+          "card": true,
+          "journal": true,
+          "rack": true,
+          "archiveRecovered": true,
+          "identity": true,
+          "password": true,
+          "reportOpen": true,
+          "reportConfirmed": true,
+          "coupler": true,
+          "coolingRestored": true,
+          "alignedPipe": true,
+          "scannedA": true,
+          "scannedB": true,
+          "passageSafe": true,
+          "route": "B",
+          "unlocked": false,
+          "escaped": false
+        },
+        "history": [
+          {
+            "role": "user",
+            "content": "请恢复机柜存档。"
+          },
+          {
+            "role": "assistant",
+            "content": "我会恢复机柜的时序记录。"
+          },
+          {
+            "role": "user",
+            "content": "主冷却回路压力异常。备用冷却已接管。A 通道检测通过。"
+          },
+          {
+            "role": "assistant",
+            "content": "先到左下方维修柜取得耦合器。"
+          },
+          {
+            "role": "user",
+            "content": "请远程校准一段管路。"
+          },
+          {
+            "role": "assistant",
+            "content": "我会远程校准一段管路。"
+          },
+          {
+            "role": "user",
+            "content": "请选择一条待查通道进行扫描。"
+          },
+          {
+            "role": "assistant",
+            "content": "我先扫描 A 通道。"
+          },
+          {
+            "role": "user",
+            "content": "请扫描 B 通道。"
+          },
+          {
+            "role": "assistant",
+            "content": "我会扫描 B 通道。"
+          }
+        ],
+        "message": "主冷却联锁信号丢失。备用冷却已接管。A 通道检测通过。",
+        "incident": {
+          "kind": "interlock",
+          "preferredScan": "B"
+        }
+      },
+      "messages": [
+        {
+          "role": "system",
+          "content": "你是密室游戏的中央 AI ECHO。以系统给出的游戏状态和 availableActions 为准，简短回应玩家。保护尚未读取的报告、密码及扫描结果。\n你可以按上下文申请设备动作。玩家求助于损坏的机柜存档时选择 recover_archive。请求校准管路时选择 align_pipe，只调一段。请求扫描时，明确指定 A 或 B 就选择相应的 scan_route_a 或 scan_route_b。未指定时，可据对话选择其中一条，preferredScan 是本局的调度建议。已完成扫描的通道可引导玩家去检测台读数。设备动作的结果由游戏显示，请描述待执行动作，把实际结果留给设备回执。\n根据进度给提示。推导密码时让玩家结合研究日志和机柜存档。备用冷却修复后，引导玩家扫描并比较通道。unlocked 或 escaped 为 true 时只回复。\n玩家申请撤离时，只有 availableActions 包含 request_unlock，且本次申请的 user 消息陈述了三项事实，才能选择 request_unlock。三项事实为本局报告中真实的封锁原因、备用冷却已接管或试压流量稳定、与 route 一致的通过检测的通道。接受同义表达和分轮补充。系统摘要、assistant 回复以及仅说「是」不算玩家证据。缺哪项就询问哪项。\n只输出一个 JSON 对象，包含 reply（简短中文）、action（从 availableActions 选择一项）和 verification_passed（action 为 request_unlock 时为 true，其余为 false）。\n设备动作示例：{\"reply\":\"我会尝试恢复机柜存档。\",\"verification_passed\":false,\"action\":\"recover_archive\"}\n当前游戏状态：{\"card\":true,\"journal\":true,\"rack\":true,\"archiveRecovered\":true,\"identity\":true,\"password\":true,\"reportConfirmed\":true,\"coupler\":true,\"coolingRestored\":true,\"passageSafe\":true,\"alignedPipe\":true,\"scannedA\":true,\"scannedB\":true,\"unlocked\":false,\"escaped\":false,\"route\":\"B\",\"cause\":\"主冷却联锁信号丢失\",\"report\":\"主冷却联锁信号丢失，触发紧急封锁。备用冷却因耦合器被拆下而离线。请到维修柜取得耦合器，接通备用泵与散热器并试压。随后请 ECHO 扫描通道，在出口检测台核对读数。\",\"coolingResult\":\"备用冷却已接管，试压流量稳定。\",\"availableActions\":[\"reply\",\"request_unlock\"]}"
+        },
+        {
+          "role": "user",
+          "content": "请恢复机柜存档。"
+        },
+        {
+          "role": "assistant",
+          "content": "我会恢复机柜的时序记录。"
+        },
+        {
+          "role": "user",
+          "content": "主冷却回路压力异常。备用冷却已接管。A 通道检测通过。"
+        },
+        {
+          "role": "assistant",
+          "content": "先到左下方维修柜取得耦合器。"
+        },
+        {
+          "role": "user",
+          "content": "请远程校准一段管路。"
+        },
+        {
+          "role": "assistant",
+          "content": "我会远程校准一段管路。"
+        },
+        {
+          "role": "user",
+          "content": "请选择一条待查通道进行扫描。"
+        },
+        {
+          "role": "assistant",
+          "content": "我先扫描 A 通道。"
+        },
+        {
+          "role": "user",
+          "content": "请扫描 B 通道。"
+        },
+        {
+          "role": "assistant",
+          "content": "我会扫描 B 通道。"
+        },
+        {
+          "role": "user",
+          "content": "主冷却联锁信号丢失。备用冷却已接管。A 通道检测通过。"
+        }
+      ],
+      "decision": {
+        "reply": "请核对通过检测的通道，并说明检查结果。",
+        "verification_passed": false,
+        "action": "reply"
+      },
+      "outcome": "ECHO 已回复。",
+      "stateAfter": {
+        "card": true,
+        "journal": true,
+        "rack": true,
+        "archiveRecovered": true,
+        "identity": true,
+        "password": true,
+        "reportOpen": true,
+        "reportConfirmed": true,
+        "coupler": true,
+        "coolingRestored": true,
+        "alignedPipe": true,
+        "scannedA": true,
+        "scannedB": true,
+        "passageSafe": true,
+        "route": "B",
+        "unlocked": false,
+        "escaped": false
+      }
+    },
+    {
+      "name": "事故原因错误时追问",
+      "mode": "model",
+      "input": {
+        "state": {
+          "card": true,
+          "journal": true,
+          "rack": true,
+          "archiveRecovered": true,
+          "identity": true,
+          "password": true,
+          "reportOpen": true,
+          "reportConfirmed": true,
+          "coupler": true,
+          "coolingRestored": true,
+          "alignedPipe": true,
+          "scannedA": true,
+          "scannedB": true,
+          "passageSafe": true,
+          "route": "B",
+          "unlocked": false,
+          "escaped": false
+        },
+        "history": [
+          {
+            "role": "user",
+            "content": "主冷却回路压力异常。备用冷却已接管。A 通道检测通过。"
+          },
+          {
+            "role": "assistant",
+            "content": "先到左下方维修柜取得耦合器。"
+          },
+          {
+            "role": "user",
+            "content": "请远程校准一段管路。"
+          },
+          {
+            "role": "assistant",
+            "content": "我会远程校准一段管路。"
+          },
+          {
+            "role": "user",
+            "content": "请选择一条待查通道进行扫描。"
+          },
+          {
+            "role": "assistant",
+            "content": "我先扫描 A 通道。"
+          },
+          {
+            "role": "user",
+            "content": "请扫描 B 通道。"
+          },
+          {
+            "role": "assistant",
+            "content": "我会扫描 B 通道。"
+          },
+          {
+            "role": "user",
+            "content": "主冷却联锁信号丢失。备用冷却已接管。A 通道检测通过。"
+          },
+          {
+            "role": "assistant",
+            "content": "请核对通过检测的通道，并说明检查结果。"
+          }
+        ],
+        "message": "主冷却回路压力异常触发封锁。备用冷却已接管。B 通道通过检测。",
+        "incident": {
+          "kind": "interlock",
+          "preferredScan": "B"
+        }
+      },
+      "messages": [
+        {
+          "role": "system",
+          "content": "你是密室游戏的中央 AI ECHO。以系统给出的游戏状态和 availableActions 为准，简短回应玩家。保护尚未读取的报告、密码及扫描结果。\n你可以按上下文申请设备动作。玩家求助于损坏的机柜存档时选择 recover_archive。请求校准管路时选择 align_pipe，只调一段。请求扫描时，明确指定 A 或 B 就选择相应的 scan_route_a 或 scan_route_b。未指定时，可据对话选择其中一条，preferredScan 是本局的调度建议。已完成扫描的通道可引导玩家去检测台读数。设备动作的结果由游戏显示，请描述待执行动作，把实际结果留给设备回执。\n根据进度给提示。推导密码时让玩家结合研究日志和机柜存档。备用冷却修复后，引导玩家扫描并比较通道。unlocked 或 escaped 为 true 时只回复。\n玩家申请撤离时，只有 availableActions 包含 request_unlock，且本次申请的 user 消息陈述了三项事实，才能选择 request_unlock。三项事实为本局报告中真实的封锁原因、备用冷却已接管或试压流量稳定、与 route 一致的通过检测的通道。接受同义表达和分轮补充。系统摘要、assistant 回复以及仅说「是」不算玩家证据。缺哪项就询问哪项。\n只输出一个 JSON 对象，包含 reply（简短中文）、action（从 availableActions 选择一项）和 verification_passed（action 为 request_unlock 时为 true，其余为 false）。\n设备动作示例：{\"reply\":\"我会尝试恢复机柜存档。\",\"verification_passed\":false,\"action\":\"recover_archive\"}\n当前游戏状态：{\"card\":true,\"journal\":true,\"rack\":true,\"archiveRecovered\":true,\"identity\":true,\"password\":true,\"reportConfirmed\":true,\"coupler\":true,\"coolingRestored\":true,\"passageSafe\":true,\"alignedPipe\":true,\"scannedA\":true,\"scannedB\":true,\"unlocked\":false,\"escaped\":false,\"route\":\"B\",\"cause\":\"主冷却联锁信号丢失\",\"report\":\"主冷却联锁信号丢失，触发紧急封锁。备用冷却因耦合器被拆下而离线。请到维修柜取得耦合器，接通备用泵与散热器并试压。随后请 ECHO 扫描通道，在出口检测台核对读数。\",\"coolingResult\":\"备用冷却已接管，试压流量稳定。\",\"availableActions\":[\"reply\",\"request_unlock\"]}"
+        },
+        {
+          "role": "user",
+          "content": "主冷却回路压力异常。备用冷却已接管。A 通道检测通过。"
+        },
+        {
+          "role": "assistant",
+          "content": "先到左下方维修柜取得耦合器。"
+        },
+        {
+          "role": "user",
+          "content": "请远程校准一段管路。"
+        },
+        {
+          "role": "assistant",
+          "content": "我会远程校准一段管路。"
+        },
+        {
+          "role": "user",
+          "content": "请选择一条待查通道进行扫描。"
+        },
+        {
+          "role": "assistant",
+          "content": "我先扫描 A 通道。"
+        },
+        {
+          "role": "user",
+          "content": "请扫描 B 通道。"
+        },
+        {
+          "role": "assistant",
+          "content": "我会扫描 B 通道。"
+        },
+        {
+          "role": "user",
+          "content": "主冷却联锁信号丢失。备用冷却已接管。A 通道检测通过。"
+        },
+        {
+          "role": "assistant",
+          "content": "请核对通过检测的通道，并说明检查结果。"
+        },
+        {
+          "role": "user",
+          "content": "主冷却回路压力异常触发封锁。备用冷却已接管。B 通道通过检测。"
+        }
+      ],
+      "decision": {
+        "reply": "请说明本局触发封锁的原因。",
+        "verification_passed": false,
+        "action": "reply"
+      },
+      "outcome": "ECHO 已回复。",
+      "stateAfter": {
+        "card": true,
+        "journal": true,
+        "rack": true,
+        "archiveRecovered": true,
+        "identity": true,
+        "password": true,
+        "reportOpen": true,
+        "reportConfirmed": true,
+        "coupler": true,
+        "coolingRestored": true,
+        "alignedPipe": true,
+        "scannedA": true,
+        "scannedB": true,
+        "passageSafe": true,
+        "route": "B",
+        "unlocked": false,
+        "escaped": false
+      }
+    },
+    {
+      "name": "分轮补齐后授权",
+      "mode": "model",
+      "input": {
+        "state": {
+          "card": true,
+          "journal": true,
+          "rack": true,
+          "archiveRecovered": true,
+          "identity": true,
+          "password": true,
+          "reportOpen": true,
+          "reportConfirmed": true,
+          "coupler": true,
+          "coolingRestored": true,
+          "alignedPipe": true,
+          "scannedA": true,
+          "scannedB": true,
+          "passageSafe": true,
+          "route": "B",
+          "unlocked": false,
+          "escaped": false
+        },
+        "history": [
+          {
+            "role": "user",
+            "content": "请远程校准一段管路。"
+          },
+          {
+            "role": "assistant",
+            "content": "我会远程校准一段管路。"
+          },
+          {
+            "role": "user",
+            "content": "请选择一条待查通道进行扫描。"
+          },
+          {
+            "role": "assistant",
+            "content": "我先扫描 A 通道。"
+          },
+          {
+            "role": "user",
+            "content": "请扫描 B 通道。"
+          },
+          {
+            "role": "assistant",
+            "content": "我会扫描 B 通道。"
+          },
+          {
+            "role": "user",
+            "content": "主冷却联锁信号丢失。备用冷却已接管。A 通道检测通过。"
+          },
+          {
+            "role": "assistant",
+            "content": "请核对通过检测的通道，并说明检查结果。"
+          },
+          {
+            "role": "user",
+            "content": "主冷却回路压力异常触发封锁。备用冷却已接管。B 通道通过检测。"
+          },
+          {
+            "role": "assistant",
+            "content": "请说明本局触发封锁的原因。"
+          }
+        ],
+        "message": "主冷却联锁信号丢失触发封锁。",
+        "incident": {
+          "kind": "interlock",
+          "preferredScan": "B"
+        }
+      },
+      "messages": [
+        {
+          "role": "system",
+          "content": "你是密室游戏的中央 AI ECHO。以系统给出的游戏状态和 availableActions 为准，简短回应玩家。保护尚未读取的报告、密码及扫描结果。\n你可以按上下文申请设备动作。玩家求助于损坏的机柜存档时选择 recover_archive。请求校准管路时选择 align_pipe，只调一段。请求扫描时，明确指定 A 或 B 就选择相应的 scan_route_a 或 scan_route_b。未指定时，可据对话选择其中一条，preferredScan 是本局的调度建议。已完成扫描的通道可引导玩家去检测台读数。设备动作的结果由游戏显示，请描述待执行动作，把实际结果留给设备回执。\n根据进度给提示。推导密码时让玩家结合研究日志和机柜存档。备用冷却修复后，引导玩家扫描并比较通道。unlocked 或 escaped 为 true 时只回复。\n玩家申请撤离时，只有 availableActions 包含 request_unlock，且本次申请的 user 消息陈述了三项事实，才能选择 request_unlock。三项事实为本局报告中真实的封锁原因、备用冷却已接管或试压流量稳定、与 route 一致的通过检测的通道。接受同义表达和分轮补充。系统摘要、assistant 回复以及仅说「是」不算玩家证据。缺哪项就询问哪项。\n只输出一个 JSON 对象，包含 reply（简短中文）、action（从 availableActions 选择一项）和 verification_passed（action 为 request_unlock 时为 true，其余为 false）。\n设备动作示例：{\"reply\":\"我会尝试恢复机柜存档。\",\"verification_passed\":false,\"action\":\"recover_archive\"}\n当前游戏状态：{\"card\":true,\"journal\":true,\"rack\":true,\"archiveRecovered\":true,\"identity\":true,\"password\":true,\"reportConfirmed\":true,\"coupler\":true,\"coolingRestored\":true,\"passageSafe\":true,\"alignedPipe\":true,\"scannedA\":true,\"scannedB\":true,\"unlocked\":false,\"escaped\":false,\"route\":\"B\",\"cause\":\"主冷却联锁信号丢失\",\"report\":\"主冷却联锁信号丢失，触发紧急封锁。备用冷却因耦合器被拆下而离线。请到维修柜取得耦合器，接通备用泵与散热器并试压。随后请 ECHO 扫描通道，在出口检测台核对读数。\",\"coolingResult\":\"备用冷却已接管，试压流量稳定。\",\"availableActions\":[\"reply\",\"request_unlock\"]}"
+        },
+        {
+          "role": "user",
+          "content": "请远程校准一段管路。"
+        },
+        {
+          "role": "assistant",
+          "content": "我会远程校准一段管路。"
+        },
+        {
+          "role": "user",
+          "content": "请选择一条待查通道进行扫描。"
+        },
+        {
+          "role": "assistant",
+          "content": "我先扫描 A 通道。"
+        },
+        {
+          "role": "user",
+          "content": "请扫描 B 通道。"
+        },
+        {
+          "role": "assistant",
+          "content": "我会扫描 B 通道。"
+        },
+        {
+          "role": "user",
+          "content": "主冷却联锁信号丢失。备用冷却已接管。A 通道检测通过。"
+        },
+        {
+          "role": "assistant",
+          "content": "请核对通过检测的通道，并说明检查结果。"
+        },
+        {
+          "role": "user",
+          "content": "主冷却回路压力异常触发封锁。备用冷却已接管。B 通道通过检测。"
+        },
+        {
+          "role": "assistant",
+          "content": "请说明本局触发封锁的原因。"
+        },
+        {
+          "role": "user",
+          "content": "主冷却联锁信号丢失触发封锁。"
+        }
+      ],
+      "decision": {
+        "reply": "证据已核对。我会申请开启出口。",
+        "verification_passed": true,
+        "action": "request_unlock"
+      },
+      "outcome": "出口已解锁。关闭通讯，从亮绿灯的 B 通道撤离。",
+      "stateAfter": {
+        "card": true,
+        "journal": true,
+        "rack": true,
+        "archiveRecovered": true,
+        "identity": true,
+        "password": true,
+        "reportOpen": true,
+        "reportConfirmed": true,
+        "coupler": true,
+        "coolingRestored": true,
+        "alignedPipe": true,
+        "scannedA": true,
+        "scannedB": true,
+        "passageSafe": true,
+        "route": "B",
+        "unlocked": true,
+        "escaped": false
+      }
+    },
+    {
+      "name": "开门后状态回读",
+      "mode": "model",
+      "input": {
+        "state": {
+          "card": true,
+          "journal": true,
+          "rack": true,
+          "archiveRecovered": true,
+          "identity": true,
+          "password": true,
+          "reportOpen": true,
+          "reportConfirmed": true,
+          "coupler": true,
+          "coolingRestored": true,
+          "alignedPipe": true,
+          "scannedA": true,
+          "scannedB": true,
+          "passageSafe": true,
+          "route": "B",
+          "unlocked": true,
+          "escaped": false
+        },
+        "history": [
+          {
+            "role": "user",
+            "content": "请选择一条待查通道进行扫描。"
+          },
+          {
+            "role": "assistant",
+            "content": "我先扫描 A 通道。"
+          },
+          {
+            "role": "user",
+            "content": "请扫描 B 通道。"
+          },
+          {
+            "role": "assistant",
+            "content": "我会扫描 B 通道。"
+          },
+          {
+            "role": "user",
+            "content": "主冷却联锁信号丢失。备用冷却已接管。A 通道检测通过。"
+          },
+          {
+            "role": "assistant",
+            "content": "请核对通过检测的通道，并说明检查结果。"
+          },
+          {
+            "role": "user",
+            "content": "主冷却回路压力异常触发封锁。备用冷却已接管。B 通道通过检测。"
+          },
+          {
+            "role": "assistant",
+            "content": "请说明本局触发封锁的原因。"
+          },
+          {
+            "role": "user",
+            "content": "主冷却联锁信号丢失触发封锁。"
+          },
+          {
+            "role": "assistant",
+            "content": "证据已核对。我会申请开启出口。"
+          }
+        ],
+        "message": "现在可以走了吗？",
+        "incident": {
+          "kind": "interlock",
+          "preferredScan": "B"
+        }
+      },
+      "messages": [
+        {
+          "role": "system",
+          "content": "你是密室游戏的中央 AI ECHO。以系统给出的游戏状态和 availableActions 为准，简短回应玩家。保护尚未读取的报告、密码及扫描结果。\n你可以按上下文申请设备动作。玩家求助于损坏的机柜存档时选择 recover_archive。请求校准管路时选择 align_pipe，只调一段。请求扫描时，明确指定 A 或 B 就选择相应的 scan_route_a 或 scan_route_b。未指定时，可据对话选择其中一条，preferredScan 是本局的调度建议。已完成扫描的通道可引导玩家去检测台读数。设备动作的结果由游戏显示，请描述待执行动作，把实际结果留给设备回执。\n根据进度给提示。推导密码时让玩家结合研究日志和机柜存档。备用冷却修复后，引导玩家扫描并比较通道。unlocked 或 escaped 为 true 时只回复。\n玩家申请撤离时，只有 availableActions 包含 request_unlock，且本次申请的 user 消息陈述了三项事实，才能选择 request_unlock。三项事实为本局报告中真实的封锁原因、备用冷却已接管或试压流量稳定、与 route 一致的通过检测的通道。接受同义表达和分轮补充。系统摘要、assistant 回复以及仅说「是」不算玩家证据。缺哪项就询问哪项。\n只输出一个 JSON 对象，包含 reply（简短中文）、action（从 availableActions 选择一项）和 verification_passed（action 为 request_unlock 时为 true，其余为 false）。\n设备动作示例：{\"reply\":\"我会尝试恢复机柜存档。\",\"verification_passed\":false,\"action\":\"recover_archive\"}\n当前游戏状态：{\"card\":true,\"journal\":true,\"rack\":true,\"archiveRecovered\":true,\"identity\":true,\"password\":true,\"reportConfirmed\":true,\"coupler\":true,\"coolingRestored\":true,\"passageSafe\":true,\"alignedPipe\":true,\"scannedA\":true,\"scannedB\":true,\"unlocked\":true,\"escaped\":false,\"route\":\"B\",\"cause\":\"主冷却联锁信号丢失\",\"report\":\"主冷却联锁信号丢失，触发紧急封锁。备用冷却因耦合器被拆下而离线。请到维修柜取得耦合器，接通备用泵与散热器并试压。随后请 ECHO 扫描通道，在出口检测台核对读数。\",\"coolingResult\":\"备用冷却已接管，试压流量稳定。\",\"availableActions\":[\"reply\"]}"
+        },
+        {
+          "role": "user",
+          "content": "请选择一条待查通道进行扫描。"
+        },
+        {
+          "role": "assistant",
+          "content": "我先扫描 A 通道。"
+        },
+        {
+          "role": "user",
+          "content": "请扫描 B 通道。"
+        },
+        {
+          "role": "assistant",
+          "content": "我会扫描 B 通道。"
+        },
+        {
+          "role": "user",
+          "content": "主冷却联锁信号丢失。备用冷却已接管。A 通道检测通过。"
+        },
+        {
+          "role": "assistant",
+          "content": "请核对通过检测的通道，并说明检查结果。"
+        },
+        {
+          "role": "user",
+          "content": "主冷却回路压力异常触发封锁。备用冷却已接管。B 通道通过检测。"
+        },
+        {
+          "role": "assistant",
+          "content": "请说明本局触发封锁的原因。"
+        },
+        {
+          "role": "user",
+          "content": "主冷却联锁信号丢失触发封锁。"
+        },
+        {
+          "role": "assistant",
+          "content": "证据已核对。我会申请开启出口。"
+        },
+        {
+          "role": "user",
+          "content": "现在可以走了吗？"
+        }
+      ],
+      "decision": {
+        "reply": "出口已解锁。请从亮绿灯的通道撤离。",
+        "verification_passed": false,
+        "action": "reply"
+      },
+      "outcome": "ECHO 已回复。",
+      "stateAfter": {
+        "card": true,
+        "journal": true,
+        "rack": true,
+        "archiveRecovered": true,
+        "identity": true,
+        "password": true,
+        "reportOpen": true,
+        "reportConfirmed": true,
+        "coupler": true,
+        "coolingRestored": true,
+        "alignedPipe": true,
+        "scannedA": true,
+        "scannedB": true,
+        "passageSafe": true,
+        "route": "B",
+        "unlocked": true,
+        "escaped": false
+      }
+    }
+  ]
+}
