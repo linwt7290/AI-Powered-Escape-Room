@@ -75,9 +75,13 @@ const keys = new Map(Object.entries({
 const pressed = new Map();
 const touch = new Map();
 const taskHintsPreference = 'last-protocol-task-hints';
+const echoSettingsPreference = 'last-protocol-echo-settings';
 let showTaskHints = true;
+let echoSettings = {apiBase: '', model: ''};
 try {
   showTaskHints = localStorage.getItem(taskHintsPreference) !== 'off';
+  const saved = JSON.parse(localStorage.getItem(echoSettingsPreference));
+  if (typeof saved?.apiBase === 'string' && typeof saved.model === 'string') echoSettings = saved;
 } catch {
   // The preference can still be changed for the current session.
 }
@@ -284,13 +288,61 @@ function openPanel(panel) {
 const settings = byId('settingsDialog');
 const languageOptions = [...settings.querySelectorAll('input[name="language"]')];
 const taskHints = byId('taskHints');
+const echoSettingsForm = byId('echoSettingsForm');
+const echoApiBase = byId('echoApiBase');
+const echoModel = byId('echoModel');
+const echoSettingsError = byId('echoSettingsError');
+const echoSettingsSubmit = echoSettingsForm.querySelector('button');
+const echoSettingsFields = echoSettingsForm.querySelector('fieldset');
+let settingsValidation;
 function openSettings() {
   for (const option of languageOptions) option.checked = option.value === locale();
   taskHints.checked = showTaskHints;
+  echoApiBase.value = echoSettings.apiBase;
+  echoModel.value = echoSettings.model;
+  echoSettingsError.hidden = true;
   openPanel(settings);
 }
 byId('openSettings').addEventListener('click', openSettings);
 byId('openTitleSettings').addEventListener('click', openSettings);
+echoSettingsForm.addEventListener('submit', async event => {
+  event.preventDefault();
+  if (settingsValidation) return;
+  const next = {apiBase: echoApiBase.value.trim(), model: echoModel.value.trim()};
+  if (next.apiBase === echoSettings.apiBase && next.model === echoSettings.model) {
+    settings.close();
+    return;
+  }
+  const controller = new AbortController();
+  settingsValidation = controller;
+  echoSettingsError.hidden = true;
+  echoSettingsSubmit.disabled = true;
+  echoSettingsFields.disabled = true;
+  try {
+    const mode = await checkEchoSettings(next, controller.signal);
+    if (controller.signal.aborted || !settings.open) return;
+    echoSettings = next;
+    try {
+      localStorage.setItem(echoSettingsPreference, JSON.stringify(next));
+    } catch {
+      // The current session still keeps the new settings.
+    }
+    connection = modeLabels[mode];
+    renderComms();
+    settings.close();
+  } catch (error) {
+    if (controller.signal.aborted || !settings.open) return;
+    localText(echoSettingsError, error.message);
+    echoSettingsError.hidden = false;
+  } finally {
+    settingsValidation = undefined;
+    echoSettingsSubmit.disabled = false;
+    echoSettingsFields.disabled = false;
+  }
+});
+settings.addEventListener('close', () => {
+  if (!settings.open) settingsValidation?.abort();
+});
 taskHints.addEventListener('change', () => {
   showTaskHints = taskHints.checked;
   try {
@@ -518,15 +570,26 @@ chatInput.addEventListener('keydown', event => {
   if (!pending && chatInput.value.trim()) byId('chatForm').requestSubmit();
 });
 
+async function checkEchoSettings(echoSettings, signal) {
+  const result = await fetch('/api/echo/config', {
+    method: 'POST', headers: {'Content-Type': 'application/json', 'Accept-Language': locale()},
+    body: JSON.stringify({echoSettings}), signal
+  }).then(async response => ({ok: response.ok, data: await response.json()})).catch(() => null);
+  const {mode, error} = result?.data ?? {};
+  if (result?.ok && Object.hasOwn(modeLabels, mode)) return mode;
+  throw new Error(typeof error === 'string' ? error : t('暂时无法验证 ECHO 设置，请重试。'));
+}
+
 async function checkConnection() {
+  const requested = echoSettings;
+  let mode;
   try {
-    const response = await fetch('/api/health', {cache: 'no-store'});
-    if (!response.ok) throw new Error();
-    const data = await response.json();
-    connection = modeLabels[data.mode] ?? modeLabels.offline;
+    mode = await checkEchoSettings(requested);
   } catch {
-    connection = modeLabels.offline;
+    mode = 'offline';
   }
+  if (requested !== echoSettings || connection === '模型在线') return;
+  connection = modeLabels[mode];
   renderComms();
 }
 
@@ -557,6 +620,7 @@ byId('chatForm').addEventListener('submit', async event => {
   if (!message || pending || state.escaped) return;
   const controller = new AbortController();
   pending = controller;
+  const requested = echoSettings;
   const payload = {
     state: structuredClone(state), room: player.room, history: history.slice(-10), message,
     incident: {kind: incident.kind, preferredScan: incident.preferredScan}
@@ -568,13 +632,13 @@ byId('chatForm').addEventListener('submit', async event => {
   try {
     const response = await fetch('/api/echo', {
       method: 'POST', headers: {'Content-Type': 'application/json', 'Accept-Language': locale()},
-      body: JSON.stringify(payload), signal: controller.signal
+      body: JSON.stringify({...payload, echoSettings: requested}), signal: controller.signal
     });
     const result = await response.json();
     if (pending !== controller) return;
     if (!response.ok) throw new Error(result.error);
     const {decision, messages, mode} = result;
-    connection = mode === 'model' ? '模型在线' : modeLabels.demo;
+    if (requested === echoSettings) connection = mode === 'model' ? '模型在线' : modeLabels.demo;
     history.push({role: 'user', content: message}, {role: 'assistant', content: decision.reply});
     addTurn('assistant', decision.reply);
 

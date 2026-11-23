@@ -408,6 +408,22 @@ kbd {
 .settings-panel { width: min(380px, calc(100% - 26px)); }
 .settings-panel .panel-body { display: grid; gap: 16px; }
 .settings-panel .primary { justify-self: end; }
+.echo-settings-form, .echo-settings-form fieldset { display: grid; gap: 7px; min-width: 0; }
+.echo-settings-form fieldset { margin: 0; padding: 0; border: 0; }
+.echo-settings-form legend { margin-bottom: 7px; padding: 0; color: var(--muted); font-size: 13px; }
+.echo-settings-form label { font-size: 13px; }
+.echo-settings-form input {
+  min-width: 0;
+  width: 100%;
+  min-height: 35px;
+  padding: 6px 8px;
+  border: 1px solid #48636e;
+  border-radius: 4px;
+  background: #0d1922;
+  color: var(--text);
+}
+#echoSettingsHint { color: var(--muted); font-size: 12px; }
+.echo-settings-form .primary { margin-top: 5px; }
 .language-options { display: grid; gap: 6px; min-width: 0; margin: 0; padding: 0; border: 0; }
 .language-options legend { margin-bottom: 8px; padding: 0; color: var(--muted); font-size: 13px; }
 .language-options label, .hint-option {

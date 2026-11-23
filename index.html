@@ -158,7 +158,18 @@
         <span><strong id="taskHintsLabel">任务提示</strong><small id="taskHintsDescription">用感叹号标出下一步交互</small></span>
         <input id="taskHints" type="checkbox" role="switch" aria-labelledby="taskHintsLabel" aria-describedby="taskHintsDescription" checked>
       </label>
-      <button class="button primary" type="button" data-close>完成</button>
+      <form id="echoSettingsForm" class="echo-settings-form">
+        <fieldset>
+          <legend>ECHO 连接</legend>
+          <label for="echoApiBase">ECHO_API_BASE</label>
+          <input id="echoApiBase" type="url" inputmode="url" autocomplete="off" spellcheck="false" maxlength="2048" aria-describedby="echoSettingsHint">
+          <label for="echoModel">ECHO_MODEL</label>
+          <input id="echoModel" type="text" autocomplete="off" spellcheck="false" maxlength="200" aria-describedby="echoSettingsHint">
+          <p id="echoSettingsHint">留空使用服务端默认配置。API 地址须与服务端配置一致。</p>
+        </fieldset>
+        <p id="echoSettingsError" class="panel-notice" role="alert" data-error="true" hidden></p>
+        <button class="button primary" type="submit">完成</button>
+      </form>
     </div>
   </dialog>
 

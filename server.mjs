@@ -7,10 +7,13 @@ import {FLOW_RESULT, INCIDENTS, incidentReport} from './puzzles.mjs';
 import {airlockContext, validAirlock} from './airlock.mjs';
 import {ROOMS} from './room.mjs';
 
-const {ECHO_API_KEY, ECHO_MODEL, ECHO_API_BASE, ECHO_PORT = '8788'} = process.env;
+const {ECHO_API_KEY, ECHO_MODEL, ECHO_API_BASE, ECHO_PORT = '8788', PORT: hostingPort} = process.env;
+const port = Number(hostingPort ?? ECHO_PORT);
+const host = hostingPort === undefined ? '127.0.0.1' : '0.0.0.0';
 const settings = [ECHO_API_KEY, ECHO_MODEL, ECHO_API_BASE];
 const configured = settings.every(Boolean);
 const mode = configured ? 'model' : settings.some(Boolean) ? 'incomplete' : 'demo';
+const approvedApiBase = ECHO_API_BASE?.trim().replace(/\/+$/, '');
 const directionNames = {north: '北门', south: '南门', east: '东门', west: '西门'};
 const roomLayout = Object.values(ROOMS).map(({name, doors}) => name + '可经' + Object.entries(doors)
   .map(([side, to]) => directionNames[side] + '前往' + ROOMS[to].name).join('、')).join('。');
@@ -47,7 +50,26 @@ function json(response, status, data) {
   response.end(JSON.stringify(data));
 }
 
-function respondToDecision(response, fail, decision, state, messages, playerMessage) {
+function resolveEchoSettings(overrides) {
+  if (overrides === undefined) return {mode, model: ECHO_MODEL};
+  if (!overrides || typeof overrides !== 'object' || Array.isArray(overrides) ||
+      typeof overrides.apiBase !== 'string' || overrides.apiBase.length > 2048 ||
+      typeof overrides.model !== 'string' || overrides.model.length > 200) {
+    return {status: 400, error: 'ECHO 设置格式无效。'};
+  }
+  const apiBase = overrides.apiBase.trim().replace(/\/+$/, '');
+  const model = overrides.model.trim() || ECHO_MODEL;
+  if (apiBase && apiBase !== approvedApiBase) {
+    return {status: 400, error: 'API 地址须与服务端配置的 ECHO_API_BASE 一致。'};
+  }
+  if (!apiBase && !overrides.model.trim()) return {mode, model};
+  if (!approvedApiBase || !ECHO_API_KEY || !model) {
+    return {status: 503, error: '自定义设置需要服务端配置 ECHO_API_BASE 和 ECHO_API_KEY，并提供模型名称。'};
+  }
+  return {mode: 'model', model};
+}
+
+function respondToDecision(response, fail, decision, state, messages, playerMessage, mode) {
   const wantsUnlock = decision?.action === 'request_unlock';
   if (typeof decision?.reply !== 'string' || !decision.reply.trim() || decision.reply.length > 2000 ||
       typeof decision.verification_passed !== 'boolean' || !ECHO_ACTIONS.includes(decision.action)) {
@@ -90,9 +112,8 @@ const server = createServer(async (request, response) => {
       response.end(content);
       return;
     }
-    if (request.method !== 'POST' || path !== '/api/echo') return fail(404, '页面不存在。');
+    if (request.method !== 'POST' || (path !== '/api/echo' && path !== '/api/echo/config')) return fail(404, '页面不存在。');
     if (request.headers['content-type'] !== 'application/json') return fail(415, '请求格式错误。');
-    if (mode === 'incomplete') return fail(503, '请补齐 ECHO_API_KEY、ECHO_MODEL 和 ECHO_API_BASE 后重启服务。');
 
     let body = '';
     request.setEncoding('utf8');
@@ -103,7 +124,12 @@ const server = createServer(async (request, response) => {
     let input;
     try { input = JSON.parse(body); }
     catch { return fail(400, '无法读取对话请求。'); }
-    const {state, history, message, incident, room} = input ?? {};
+    const {state, history, message, incident, room, echoSettings} = input ?? {};
+    const effective = resolveEchoSettings(echoSettings);
+    if (effective.error) return fail(effective.status, effective.error);
+    const {mode: requestMode, model} = effective;
+    if (path === '/api/echo/config') return json(response, 200, {mode: requestMode});
+    if (requestMode === 'incomplete') return fail(503, '请补齐 ECHO_API_KEY、ECHO_MODEL 和 ECHO_API_BASE 后重启服务。');
     if (typeof message !== 'string' || !message.trim() || message.length > 1000 ||
         !Array.isArray(history) || history.length > 10 || !history.every(turn =>
           ['user', 'assistant'].includes(turn?.role) && typeof turn.content === 'string' && turn.content.length <= 2000) ||
@@ -135,8 +161,8 @@ const server = createServer(async (request, response) => {
     if (context.coolingRestored) context.coolingResult = translate(locale, FLOW_RESULT);
     context.availableActions = ECHO_ACTIONS.filter(action => canEchoAct(snapshot, action));
     if (context.availableActions.some(action => action.startsWith('scan_route_'))) context.preferredScan = incident.preferredScan;
-    if (mode === 'demo') return respondToDecision(response, fail, demoDecision(snapshot, history, message, incident, locale), snapshot, null, message);
-    const completionUrl = new URL(ECHO_API_BASE.replace(/\/+$/, '') + '/chat/completions');
+    if (requestMode === 'demo') return respondToDecision(response, fail, demoDecision(snapshot, history, message, incident, locale), snapshot, null, message, requestMode);
+    const completionUrl = new URL(approvedApiBase + '/chat/completions');
     const usesDeepSeek = completionUrl.hostname === 'api.deepseek.com';
     const readsFinalState = usesDeepSeek && (context.unlocked || context.escaped);
     const replyLanguage = locale === 'en' ? 'Write your reply in English.' : '请用简体中文回复。';
@@ -150,7 +176,7 @@ const server = createServer(async (request, response) => {
       ...history.map(({role, content}) => ({role, content})),
       {role: 'user', content: message}
     ];
-    const completion = {model: ECHO_MODEL, messages};
+    const completion = {model, messages};
     if (!readsFinalState) completion.response_format = {type: 'json_object'};
     if (usesDeepSeek) {
       completion.thinking = {type: 'disabled'};
@@ -186,9 +212,9 @@ const server = createServer(async (request, response) => {
       }
       break;
     }
-    respondToDecision(response, fail, decision, snapshot, messages, message);
+    respondToDecision(response, fail, decision, snapshot, messages, message, requestMode);
   } catch {
     fail(502, 'ECHO 未能完成请求。请检查连接并重试。');
   }
 });
-server.listen(Number(ECHO_PORT), '127.0.0.1', () => console.log('最后的协议 http://127.0.0.1:' + ECHO_PORT));
+server.listen(port, host, () => console.log('最后的协议 http://' + host + ':' + server.address().port));
