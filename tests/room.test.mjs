@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {DOORS, EXIT, move, nearbyObject, nextDoor, OBJECTS, PASSAGE_LANES, ROOMS} from './room.mjs';
-import {currentObjective, initialState, pipeCoordinates} from './rules.mjs';
-import {demoDecision} from './demo-echo.mjs';
+import {DOORS, EXIT, move, nearbyObject, nextDoor, OBJECTS, PASSAGE_LANES, ROOMS} from '../shared/room.mjs';
+import {currentObjective, initialState, pipeCoordinates} from '../shared/rules.mjs';
+import {demoDecision} from '../backend/demo-echo.mjs';
 
 const opposites = {north: 'south', south: 'north', east: 'west', west: 'east'};
 const offsets = {north: [0, -1], south: [0, 1], east: [1, 0], west: [-1, 0]};

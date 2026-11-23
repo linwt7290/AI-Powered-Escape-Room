@@ -1,4 +1,4 @@
-import {canInspectObject, DOORS, DOOR_HALF_WIDTH, EXIT, HEIGHT, OBJECT_KEYS_BY_ROOM, OBJECTS, PASSAGE_LANES, PROP_BY_ROOM, ROOM_PROPS, ROOMS, WIDTH} from './room.mjs';
+import {canInspectObject, DOORS, DOOR_HALF_WIDTH, EXIT, HEIGHT, OBJECT_KEYS_BY_ROOM, OBJECTS, PASSAGE_LANES, PROP_BY_ROOM, ROOM_PROPS, ROOMS, WIDTH} from '../shared/room.mjs';
 
 const FRONT = [
   '....HHHHHH......', '..HHhhhhhhHH....', '..HhhhhhHHhH....', '.HHhHHHHHhhHH...',

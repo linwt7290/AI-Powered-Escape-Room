@@ -1,7 +1,7 @@
-import {canEchoAct, pipeCoordinates, SCAN_ACTIONS, SCAN_FIELDS} from './rules.mjs';
-import {INCIDENTS} from './puzzles.mjs';
-import {AIRLOCK_ACTIONS} from './airlock.mjs';
-import {DEFAULT_LOCALE, phrase, translate} from './i18n.mjs';
+import {canEchoAct, pipeCoordinates, SCAN_ACTIONS, SCAN_FIELDS} from '../shared/rules.mjs';
+import {INCIDENTS} from '../shared/puzzles.mjs';
+import {AIRLOCK_ACTIONS} from '../shared/airlock.mjs';
+import {DEFAULT_LOCALE, phrase, translate} from '../shared/i18n.mjs';
 
 const routeMention = /\b([AB])\s*(?:号\s*)?(?:通道|路线|route\b|passage\b)|(?:通道|路线|route\s+|passage\s+)\s*([AB])\b/i;
 const facts = [

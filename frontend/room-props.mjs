@@ -1,4 +1,4 @@
-import {ROOM_PROPS} from './room.mjs';
+import {ROOM_PROPS} from '../shared/room.mjs';
 import {drawPropPreview} from './pixel-art.mjs';
 import {localText} from './ui-language.mjs';
 

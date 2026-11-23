@@ -1,4 +1,4 @@
-import {DEFAULT_LOCALE, LOCALES, translate} from './i18n.mjs';
+import {DEFAULT_LOCALE, LOCALES, translate} from '../shared/i18n.mjs';
 
 const preferenceKey = 'last-protocol-language';
 const bindings = new WeakMap();

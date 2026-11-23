@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {AIRLOCK_ACTIONS, airlockContext, applyAirlockAction, enterChamber, finishClosing, leaveChamber, validAirlock} from './airlock.mjs';
-import {demoDecision} from './demo-echo.mjs';
-import {canEchoAct, initialState, UNLOCK_REQUIREMENTS} from './rules.mjs';
+import {AIRLOCK_ACTIONS, airlockContext, applyAirlockAction, enterChamber, finishClosing, leaveChamber, validAirlock} from '../shared/airlock.mjs';
+import {demoDecision} from '../backend/demo-echo.mjs';
+import {canEchoAct, initialState, UNLOCK_REQUIREMENTS} from '../shared/rules.mjs';
 
 function authorizedState() {
   const state = initialState();

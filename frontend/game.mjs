@@ -1,13 +1,15 @@
-import {phrase} from './i18n.mjs';
+import {phrase} from '../shared/i18n.mjs';
 import {applyLanguage, locale, localText, t} from './ui-language.mjs';
-import {canEchoAct, currentObjective, initialState, SCAN_ACTIONS, SCAN_FIELDS} from './rules.mjs';
-import {DOORS, EXIT, HEIGHT, move, nearbyObject, nextDoor, OBJECTS, PASSAGE_LANES, PROP_BY_ROOM, ROOMS, SPAWN, WIDTH} from './room.mjs';
+import {canEchoAct, currentObjective, initialState, SCAN_ACTIONS, SCAN_FIELDS} from '../shared/rules.mjs';
+import {DOORS, EXIT, HEIGHT, move, nearbyObject, nextDoor, OBJECTS, PASSAGE_LANES, PROP_BY_ROOM, ROOMS, SPAWN, WIDTH} from '../shared/room.mjs';
 import {createRoomProps} from './room-props.mjs';
 import {createPainter, drawEcho, drawTitleScene} from './pixel-art.mjs';
-import {createCase, EXPERIMENTS, FLOW_RESULT, incidentReport, LOG_CLUE, RACK_CLUE} from './puzzles.mjs';
+import {createCase, EXPERIMENTS, FLOW_RESULT, incidentReport, LOG_CLUE, RACK_CLUE} from '../shared/puzzles.mjs';
 import {createDevices, describeRouteReadings} from './devices.mjs';
-import {AIRLOCK_ACTIONS, applyAirlockAction, leaveChamber} from './airlock.mjs';
+import {AIRLOCK_ACTIONS, applyAirlockAction, leaveChamber} from '../shared/airlock.mjs';
 import {createAirlockPanel} from './airlock-panel.mjs';
+import {checkEchoConfig, sendEchoMessage} from './echo/api.mjs';
+import {progressSnapshot, TIMELINE_LIMIT} from '../shared/progress-timeline.mjs';
 
 const byId = id => document.getElementById(id);
 const titleScreen = byId('titleScreen');
@@ -95,6 +97,9 @@ let state = initialState();
 let incident;
 let player = {...SPAWN, facing: 'down', moving: false, pickupUntil: 0};
 let history = [];
+const progressTimeline = [];
+let progressStartedAt = performance.now();
+let previousProgress = progressSnapshot(state, player.room);
 let pending;
 let connection = '正在连接';
 let nearest;
@@ -226,6 +231,13 @@ function renderObjective() {
 }
 
 function render() {
+  const snapshot = progressSnapshot(state, player.room);
+  const changes = Object.entries(snapshot).filter(([field, value]) => value !== previousProgress[field]);
+  if (changes.length) {
+    progressTimeline.push({atMs: Math.floor(performance.now() - progressStartedAt), changes: Object.fromEntries(changes)});
+    if (progressTimeline.length > TIMELINE_LIMIT) progressTimeline.shift();
+    previousProgress = snapshot;
+  }
   const clues = state.card && state.journal && state.archiveRecovered && state.identity;
   const progress = [clues, state.reportConfirmed, state.coolingRestored, state.passageSafe, state.unlocked];
   byId('progressCount').textContent = progress.filter(Boolean).length + ' / ' + progress.length;
@@ -319,7 +331,7 @@ echoSettingsForm.addEventListener('submit', async event => {
   echoSettingsSubmit.disabled = true;
   echoSettingsFields.disabled = true;
   try {
-    const mode = await checkEchoSettings(next, controller.signal);
+    const mode = await checkEchoConfig(next, controller.signal);
     if (controller.signal.aborted || !settings.open) return;
     echoSettings = next;
     try {
@@ -570,21 +582,11 @@ chatInput.addEventListener('keydown', event => {
   if (!pending && chatInput.value.trim()) byId('chatForm').requestSubmit();
 });
 
-async function checkEchoSettings(echoSettings, signal) {
-  const result = await fetch('/api/echo/config', {
-    method: 'POST', headers: {'Content-Type': 'application/json', 'Accept-Language': locale()},
-    body: JSON.stringify({echoSettings}), signal
-  }).then(async response => ({ok: response.ok, data: await response.json()})).catch(() => null);
-  const {mode, error} = result?.data ?? {};
-  if (result?.ok && Object.hasOwn(modeLabels, mode)) return mode;
-  throw new Error(typeof error === 'string' ? error : t('暂时无法验证 ECHO 设置，请重试。'));
-}
-
 async function checkConnection() {
   const requested = echoSettings;
   let mode;
   try {
-    mode = await checkEchoSettings(requested);
+    mode = await checkEchoConfig(requested);
   } catch {
     mode = 'offline';
   }
@@ -623,6 +625,7 @@ byId('chatForm').addEventListener('submit', async event => {
   const requested = echoSettings;
   const payload = {
     state: structuredClone(state), room: player.room, history: history.slice(-10), message,
+    progressTimeline: progressTimeline.slice(),
     incident: {kind: incident.kind, preferredScan: incident.preferredScan}
   };
   const turn = addTurn('user', message);
@@ -630,13 +633,9 @@ byId('chatForm').addEventListener('submit', async event => {
   setChatStatus('ECHO 正在核验…');
   renderComms();
   try {
-    const response = await fetch('/api/echo', {
-      method: 'POST', headers: {'Content-Type': 'application/json', 'Accept-Language': locale()},
-      body: JSON.stringify({...payload, echoSettings: requested}), signal: controller.signal
-    });
-    const result = await response.json();
+    const {ok, data: result} = await sendEchoMessage({...payload, echoSettings: requested}, controller.signal);
     if (pending !== controller) return;
-    if (!response.ok) throw new Error(result.error);
+    if (!ok) throw new Error(result.error);
     const {decision, messages, mode} = result;
     if (requested === echoSettings) connection = mode === 'model' ? '模型在线' : modeLabels.demo;
     history.push({role: 'user', content: message}, {role: 'assistant', content: decision.reply});
@@ -688,7 +687,10 @@ window.addEventListener('keydown', event => {
   }
   if (event.repeat) return;
   if (event.code === 'KeyE') interact();
-  if (event.code === 'KeyQ') openEcho();
+  if (event.code === 'KeyQ') {
+    event.preventDefault();
+    openEcho();
+  }
 });
 window.addEventListener('keyup', event => pressed.delete(event.code));
 window.addEventListener('blur', clearMovement);
@@ -750,6 +752,9 @@ function reset() {
   roomProps.reset();
   player = {...SPAWN, facing: 'down', moving: false, pickupUntil: 0};
   visitedRooms.clear();
+  progressTimeline.length = 0;
+  progressStartedAt = performance.now();
+  previousProgress = progressSnapshot(state, player.room);
   history = [];
   nearest = undefined;
   opening = 0;

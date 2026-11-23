@@ -1,5 +1,5 @@
 import {locale, localText} from './ui-language.mjs';
-import {AIRLOCK_ACTIONS, enterChamber, finishClosing, leaveChamber} from './airlock.mjs';
+import {AIRLOCK_ACTIONS, enterChamber, finishClosing, leaveChamber} from '../shared/airlock.mjs';
 
 const byId = id => document.getElementById(id);
 const doorLabels = {

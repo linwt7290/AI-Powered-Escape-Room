@@ -1,7 +1,7 @@
-import {phrase} from './i18n.mjs';
+import {phrase} from '../shared/i18n.mjs';
 import {locale, localText, t} from './ui-language.mjs';
-import {alignNextPipe, FLOW_RESULT, GRID_SIZE, pipeFault, PRESSURE_LIMIT, PARTICLE_LIMIT, rotatePipe, safePassage, traceCircuit} from './puzzles.mjs';
-import {canEchoAct, SCAN_FIELDS} from './rules.mjs';
+import {alignNextPipe, FLOW_RESULT, GRID_SIZE, pipeFault, PRESSURE_LIMIT, PARTICLE_LIMIT, rotatePipe, safePassage, traceCircuit} from '../shared/puzzles.mjs';
+import {canEchoAct, SCAN_FIELDS} from '../shared/rules.mjs';
 
 const byId = id => document.getElementById(id);
 const directions = ['北', '东', '南', '西'];
