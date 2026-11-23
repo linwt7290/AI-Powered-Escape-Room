@@ -1,3 +1,5 @@
+import {DEFAULT_LOCALE, phrase, translate} from './i18n.mjs';
+
 export const EXPERIMENTS = [
   {id: 'cooling', label: '冷却自检'},
   {id: 'calibration', label: '样本校准'},
@@ -15,22 +17,25 @@ export const INCIDENTS = {
   pressure: {
     cause: '主冷却回路压力异常',
     aliases: /(?:主冷却|主回路).{0,12}(?:压力|压强).{0,6}(?:异常|超限|过高|过低|失常)/,
+    englishAliases: /(?:abnormal|high|low|irregular) pressure.{0,30}(?:primary|main) cooling|(?:primary|main) cooling.{0,30}(?:pressure.{0,12}(?:abnormal|high|low|fault|out of range)|(?:abnormal|high|low|irregular) pressure)/i,
     failedReading: {pressure: 6}
   },
   pump: {
     cause: '主冷却循环泵停转',
     aliases: /(?:循环泵|主泵|主冷却泵).{0,8}(?:停转|停机|失效|故障|卡住)/,
+    englishAliases: /(?:(?:primary|main) cooling.{0,15}pump|circulation pump).{0,15}(?:stopped|failed|stalled)/i,
     failedReading: {particles: 3}
   },
   interlock: {
     cause: '主冷却联锁信号丢失',
     aliases: /(?:冷却.{0,6})?联锁(?:信号|通信|通讯)?.{0,5}(?:丢失|中断|失联|故障)/,
+    englishAliases: /(?:interlock signal.{0,12}(?:lost|failed|missing)|lost.{0,16}interlock signal)/i,
     failedReading: {interlock: false}
   }
 };
 
-export function incidentReport(id) {
-  return INCIDENTS[id].cause + '，触发紧急封锁。备用冷却因耦合器被拆下而离线。请到维修柜取得耦合器，接通备用泵与散热器并试压。随后请 ECHO 扫描通道，在出口检测台核对读数。';
+export function incidentReport(id, locale = DEFAULT_LOCALE) {
+  return translate(locale, phrase('{cause}，触发紧急封锁。备用冷却因耦合器被拆下而离线。请到维修柜取得耦合器，接通备用泵与散热器并试压。随后请 ECHO 扫描通道，在出口检测台核对读数。', {cause: INCIDENTS[id].cause}));
 }
 
 const NORTH = 1;

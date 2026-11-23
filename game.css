@@ -30,7 +30,11 @@ button:disabled { cursor: default; }
 .shell { width: min(962px, calc(100% - 44px)); margin: 0 auto; padding: 33px 0 24px; }
 .masthead, .brand, .hud, .mission, .equipment, .inventory, .utility, .shortcuts,
 .panel-header, .terminal-row, .code-row { display: flex; align-items: center; }
-.masthead { justify-content: space-between; margin-bottom: 21px; }
+.masthead { justify-content: space-between; gap: 10px; margin-bottom: 18px; }
+.header-actions { display: flex; flex: none; gap: 6px; }
+.header-actions .button { min-height: 39px; }
+#openSettings { color: #baeee6; border-color: #3b6369; background: #163036; }
+.header-actions #openSettings:hover { background: #234549; }
 .brand { gap: 13px; }
 .brand-mark {
   position: relative;
@@ -49,8 +53,7 @@ button:disabled { cursor: default; }
   background: currentColor;
   box-shadow: -8px 4px #508f89, 8px -4px #508f89;
 }
-.brand h1 { font-size: 26px; line-height: 1.15; letter-spacing: .08em; }
-.brand p { margin-top: 5px; color: #a0c1c1; font: 11px/1.2 var(--mono); letter-spacing: .16em; }
+.brand h1 { font-size: 26px; line-height: 1.15; letter-spacing: .025em; }
 .button, .inventory-item {
   display: inline-flex;
   align-items: center;
@@ -59,7 +62,7 @@ button:disabled { cursor: default; }
   min-height: 36px;
   padding: 6px 12px;
   border: 1px solid var(--line);
-  border-radius: 0;
+  border-radius: 4px;
   background: var(--raised);
   font-size: 13px;
   white-space: nowrap;
@@ -67,10 +70,9 @@ button:disabled { cursor: default; }
 .button:hover:enabled, .inventory-item:hover:enabled { background: #233a44; border-color: #66888c; }
 .button:disabled, .inventory-item:disabled { opacity: .48; }
 .reset { background: #111b23; color: #bacece; }
-.reset span { font-size: 18px; line-height: 1; }
 
-.game { border: 1px solid var(--line); background: var(--plate); box-shadow: 0 18px 55px #0007; }
-.hud { min-height: 59px; justify-content: space-between; padding: 8px 16px; border-bottom: 1px solid var(--line); }
+.game { overflow: hidden; border: 1px solid #35515c; border-radius: 9px; background: var(--plate); box-shadow: 0 18px 55px #0007; }
+.hud { min-height: 59px; justify-content: space-between; gap: 9px; padding: 8px 16px; border-bottom: 1px solid var(--line); }
 .mission { gap: 15px; }
 .mission-progress {
   min-width: 54px;
@@ -92,6 +94,7 @@ button:disabled { cursor: default; }
   gap: 8px;
   padding: 5px 10px;
   border: 1px solid #744d46;
+  border-radius: 4px;
   background: #352529;
   color: var(--red);
   font-size: 12px;
@@ -104,6 +107,44 @@ button:disabled { cursor: default; }
   color: var(--mint);
 }
 
+.room-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  color: #bed4d8;
+  border-bottom: 1px solid var(--line);
+  background: #12232c;
+  font-size: 12px;
+}
+.room-heading strong { color: var(--text); font-size: 14px; font-weight: 600; }
+.room-location { min-width: 0; }
+#roomsExplored { display: block; margin-top: 3px; color: var(--muted); font-size: 10px; }
+.minimap {
+  --map-gap: 7px;
+  display: grid;
+  grid-auto-columns: clamp(52px, 16vw, 79px);
+  grid-auto-rows: 21px;
+  gap: var(--map-gap);
+}
+.map-room {
+  position: relative;
+  display: grid;
+  place-items: center;
+  border: 1px solid #354e57;
+  border-radius: 3px;
+  background: #152831;
+  color: #9ab0b8;
+  font-size: 11px;
+  line-height: 1.05;
+  text-align: center;
+}
+.map-room[data-visited="true"] { border-color: #527b79; background: #1c373e; color: #d0e5e4; }
+.map-room[aria-current="location"] { border-color: #a0f0d9; background: #a0f0d9; color: #122c30; font-weight: 700; }
+.map-room[data-east]::after, .map-room[data-south]::before { position: absolute; background: #628185; content: ""; }
+.map-room[data-east]::after { left: calc(100% + 1px); top: calc(50% - 1px); width: var(--map-gap); height: 2px; }
+.map-room[data-south]::before { top: calc(100% + 1px); left: calc(50% - 1px); width: 2px; height: var(--map-gap); }
 .stage { position: relative; background: #111c24; }
 .stage::after {
   position: absolute;
@@ -115,6 +156,18 @@ button:disabled { cursor: default; }
 }
 #room { display: block; width: 100%; height: auto; image-rendering: pixelated; }
 .room-markers { position: absolute; inset: 0; pointer-events: none; }
+.passage-sign {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  padding: 2px 7px;
+  border: 1px solid #538281;
+  border-radius: 3px;
+  background: #13282ef5;
+  color: #cdf5e6;
+  box-shadow: 0 2px 5px #07131499;
+  font-size: clamp(9px, 2vw, 11px);
+  white-space: nowrap;
+}
 .room-marker {
   position: absolute;
   transform: translate(-50%, -100%);
@@ -257,7 +310,7 @@ kbd {
   gap: 4px;
   touch-action: none;
 }
-.direction-pad button { height: 43px; padding: 0; font-size: 18px; user-select: none; }
+.direction-pad button { height: 43px; padding: 0; font-size: 12px; font-weight: 700; user-select: none; }
 .direction-pad [data-direction="up"] { grid-area: 1 / 2; }
 .direction-pad [data-direction="left"] { grid-area: 2 / 1; }
 .direction-pad [data-direction="down"] { grid-area: 2 / 2; }
@@ -270,6 +323,7 @@ kbd {
   max-height: min(90dvh, var(--visible-height, 90dvh));
   padding: 0;
   border: 1px solid #48616c;
+  border-radius: 8px;
   color: var(--text);
   background: #14212b;
   box-shadow: 0 18px 0 -12px #071013, 0 20px 70px #0009;
@@ -288,6 +342,23 @@ kbd {
 .close { min-width: 32px; min-height: 32px; padding: 0 6px; font-size: 23px; line-height: 1; color: #c0d2d4; }
 .primary { color: #0a211e; background: var(--mint); border-color: #a5ead9; font-weight: 700; }
 .primary:hover:enabled { background: #b1f5e2; border-color: #b1f5e2; }
+.settings-panel { width: min(380px, calc(100% - 26px)); }
+.settings-panel .panel-body { display: grid; gap: 16px; }
+.settings-panel .primary { justify-self: end; }
+.language-options { display: grid; gap: 6px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.language-options legend { margin-bottom: 8px; padding: 0; color: var(--muted); font-size: 13px; }
+.language-options label {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #172a33;
+  cursor: pointer;
+}
+.language-options label:has(input:checked) { border-color: #6ab4a7; background: #1b373c; }
+.language-options input { margin: 0; accent-color: var(--mint); }
 .journal-panel {
   border-color: #b69b74;
   color: #332b25;
@@ -356,6 +427,7 @@ kbd {
   gap: 7px;
 }
 .circuit-labels { color: var(--mint); font-size: 12px; }
+.circuit-labels span { display: inline-block; padding: 2px 6px; border: 1px solid #355e62; border-radius: 3px; background: #173034; }
 .circuit-outlet { text-align: right; }
 .pipe-grid {
   display: grid;
@@ -409,6 +481,25 @@ kbd {
 .route-option span { grid-column: 2; color: #aac0c4; font-size: 13px; }
 .device-panel .panel-notice:not([data-error="true"]) { color: var(--mint); }
 
+.airlock-door-display {
+  --lamp: #71828a;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #34535d;
+  background: #0a1920;
+}
+.airlock-lamp { width: 11px; height: 11px; flex: none; background: var(--lamp); box-shadow: 0 0 9px var(--lamp); }
+.airlock-door-display[data-phase="closing"] { --lamp: var(--amber); }
+.airlock-door-display:is([data-phase="closed"], [data-phase="open"]) { --lamp: var(--mint); }
+.airlock-door-display[data-phase="rejected"] { --lamp: var(--red); }
+.airlock-log { padding: 10px 12px; border: 1px solid var(--line); color: var(--muted); font-size: 13px; }
+.airlock-log summary { cursor: pointer; color: var(--text); }
+.airlock-log ol { padding-inline-start: 20px; }
+#sparesDialog [data-evidence] { justify-self: start; }
+#sparesDialog .code-row { flex-wrap: wrap; }
+
 .echo-panel {
   position: fixed;
   inset: auto 0 calc(14px + var(--keyboard-offset, 0px));
@@ -456,11 +547,13 @@ kbd {
   .brand { gap: 8px; }
   .brand-mark { width: 39px; height: 39px; }
   .brand h1 { font-size: 21px; }
-  .brand p { font-size: 9px; }
-  .hud, .field-log, .equipment { padding-left: 9px; padding-right: 9px; }
+  .header-actions .button { min-height: 34px; padding-inline: 8px; }
+  .hud, .room-heading, .field-log, .equipment { padding-left: 9px; padding-right: 9px; }
   .hud { min-height: 52px; }
   .mission { gap: 9px; }
   .mission-progress { min-width: 45px; padding-right: 8px; }
+  .door-status { padding-inline: 6px; }
+  .map-room { font-size: 10px; }
   .inventory { gap: 4px; }
   .inventory-label, .echo-button kbd, .interact-prompt kbd, .arrow-keys { display: none; }
   .equipment { min-height: 56px; gap: 5px; }
@@ -469,4 +562,11 @@ kbd {
   .interact-prompt { min-height: 24px; font-size: 10px; padding: 1px 5px; }
   .trace-grid { grid-template-columns: 1fr; }
   .shortcuts { gap: 5px; }
+}
+@media (max-width: 360px) {
+  .brand { gap: 6px; }
+  .brand-mark { width: 34px; height: 34px; flex: none; }
+  .brand h1 { font-size: 18px; }
+  .door-status { max-width: 102px; white-space: normal; }
+  .panel .button { white-space: normal; }
 }

@@ -1,4 +1,4 @@
-import {EXIT, HEIGHT, PASSAGE_LANES, WIDTH} from './room.mjs';
+import {DOORS, DOOR_HALF_WIDTH, EXIT, HEIGHT, OBJECTS, PASSAGE_LANES, ROOMS, WIDTH} from './room.mjs';
 
 const FRONT = [
   '....HHHHHH......', '..HHhhhhhhHH....', '..HhhhhhHHhH....', '.HHhHHHHHhhHH...',
@@ -81,7 +81,17 @@ export function drawEcho(canvas, status, time = 0) {
   paintScreen(canvas.getContext('2d'), 0, 0, status, time);
 }
 
-function paintRoom(ctx) {
+const floorColors = {
+  research: ['#343c40', '#353f43', '#333c41', '#363f40', '#313a3e'],
+  control: ['#243f47', '#264049', '#27424a', '#263d45', '#233b44'],
+  archive: ['#303649', '#32384c', '#2e3547', '#333950', '#303646'],
+  maintenance: ['#393c3c', '#3b403e', '#373c3a', '#3b3e3c', '#363b3b'],
+  exit: ['#2a3d46', '#293b45', '#283a43', '#2c4049', '#253842'],
+  duty: ['#3b353e', '#3d373e', '#383440', '#403941', '#3c3640'],
+  service: ['#293e3d', '#2c423f', '#2a3f41', '#2c4141', '#273c3c']
+};
+
+function paintStructure(ctx, room) {
   rect(ctx, '#101a24', 0, 0, WIDTH, HEIGHT);
   rect(ctx, '#233640', 14, 65, 452, 185);
   // 地砖、磨损与嵌入地面的灯带。
@@ -90,7 +100,7 @@ function paintRoom(ctx) {
     seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
     return seed % max;
   };
-  const floor = ['#2a3d46', '#293b45', '#283a43', '#2c4049', '#253842'];
+  const floor = floorColors[room];
   for (let y = 67; y < 247; y += 16) {
     for (let x = 16; x < 464; x += 16) {
       const height = Math.min(16, 247 - y);
@@ -104,15 +114,6 @@ function paintRoom(ctx) {
   rect(ctx, '#39525a', 19, 232, 440, 1);
   rect(ctx, '#1a2d37', 19, 233, 440, 5);
   for (let x = 25; x < 456; x += 12) rect(ctx, x % 48 === 25 ? '#577d81' : '#324b54', x, 235, 6, 1);
-  // 磨损的导向线把三个操作区连起来。
-  rect(ctx, '#384b55', 109, 164, 284, 2);
-  rect(ctx, '#384b55', 393, 120, 2, 46);
-  rect(ctx, '#384b55', 247, 124, 2, 40);
-  for (let x = 118; x <= 380; x += 24) rect(ctx, '#52666b', x, 164, 3, 1);
-  for (const x of [217, 241, 265]) {
-    rect(ctx, '#435963', x, 223, 13, 1);
-    rect(ctx, '#334852', x + 1, 224, 11, 1);
-  }
   rect(ctx, '#344c58', 14, 248, 452, 5);
   rect(ctx, '#172932', 14, 253, 452, 6);
   rect(ctx, '#0b1721', 0, 259, 480, 5);
@@ -140,7 +141,9 @@ function paintRoom(ctx) {
   rect(ctx, '#131e28', 19, 22, 300, 7);
   rect(ctx, '#455761', 20, 23, 297, 3);
   for (const x of [45, 84, 154, 192, 281, 306]) rect(ctx, '#6d7d80', x, 22, 3, 6);
+}
 
+function paintArchive(ctx) {
   for (const [x, hue] of [[29, '#77c4c0'], [68, '#58c1c9'], [107, '#7fbd9c']]) {
     panel(ctx, x, 31, 34, 44, '#243943');
     rect(ctx, '#111f2a', x + 4, 37, 26, 30);
@@ -150,10 +153,24 @@ function paintRoom(ctx) {
     }
     rect(ctx, '#50646c', x + 11, 70, 12, 2);
   }
+  for (const [x, y, width, height] of [[304, 77, 90, 50], [309, 188, 84, 45]]) {
+    panel(ctx, x, y, width, height, '#35374e', '#62627b');
+    for (let column = x + 5; column < x + width - 9; column += 13) {
+      rect(ctx, '#1d2539', column, y + 5, 10, height - 13);
+      rect(ctx, '#7687b3', column + 2, y + 8, 6, 2);
+      rect(ctx, '#484f76', column + 2, y + 14, 6, 3);
+      rect(ctx, '#84739e', column + 4, y + height - 13, 2, 2);
+    }
+  }
+}
+
+function paintControl(ctx) {
   panel(ctx, 164, 34, 46, 23, '#192e39');
   rect(ctx, '#42666c', 170, 39, 33, 2);
   rect(ctx, '#28454e', 170, 45, 33, 2);
   rect(ctx, '#28454e', 170, 50, 20, 2);
+  ctx.save();
+  ctx.translate(OBJECTS.terminal.x - 248, 0);
   panel(ctx, 219, 33, 59, 25, '#14282e', '#3e615f');
   rect(ctx, '#28494b', 222, 36, 53, 17);
   rect(ctx, '#142c32', 224, 38, 49, 13);
@@ -166,11 +183,41 @@ function paintRoom(ctx) {
   }
   rect(ctx, '#25464c', 244, 56, 7, 17);
   rect(ctx, '#142630', 246, 56, 3, 17);
+  ctx.restore();
   rect(ctx, '#3d555d', 292, 35, 19, 22);
   rect(ctx, '#243640', 294, 37, 15, 18);
   rect(ctx, '#e3ae62', 298, 41, 7, 1);
   rect(ctx, '#a67d4b', 300, 45, 3, 6);
 
+  panel(ctx, 62, 85, 87, 29, '#23404c', '#536e79');
+  for (const x of [69, 96, 123]) {
+    rect(ctx, '#142934', x, 89, 19, 15);
+    for (let row = 0; row < 3; row++) rect(ctx, '#4d9692', x + 3, 92 + 3 * row, 8 + 2 * row, 1);
+    rect(ctx, '#83c0a5', x + 3, 108, 4, 1);
+  }
+
+  ctx.save();
+  ctx.translate(OBJECTS.terminal.x - 248, 0);
+  rect(ctx, '#1b2b34', 219, 114, 59, 9);
+  panel(ctx, 225, 83, 47, 35, '#425865', '#759094');
+  rect(ctx, '#182b35', 229, 85, 39, 25);
+  rect(ctx, '#457077', 231, 87, 35, 20);
+  rect(ctx, '#11343f', 233, 88, 31, 17);
+  rect(ctx, '#255a62', 233, 88, 31, 2);
+  rect(ctx, '#212f37', 229, 112, 40, 4);
+  for (let x = 235; x < 256; x += 4) rect(ctx, '#6e8b88', x, 113, 2, 1);
+  rect(ctx, '#e7a968', 260, 113, 5, 1);
+  ctx.restore();
+}
+
+function paintExit(ctx) {
+  panel(ctx, 171, 77, 96, 39, '#303f49', '#61727b');
+  rect(ctx, '#162b36', 177, 82, 84, 22);
+  for (let x = 182; x < 256; x += 10) {
+    rect(ctx, '#436471', x, 86, 7, 12);
+    rect(ctx, '#a58a63', x + 4, 89, 1, 3);
+  }
+  rect(ctx, '#b78b59', 180, 111, 76, 2);
   // 地面疏散线和门框。门扇独立绘制。
   rect(ctx, '#202d36', 355, 69, 89, 54);
   rect(ctx, '#36474d', 359, 72, 81, 44);
@@ -193,6 +240,15 @@ function paintRoom(ctx) {
   rect(ctx, '#0e252e', 444, 52, 11, 8);
   rect(ctx, '#577076', 446, 55, 3, 2);
   rect(ctx, '#577076', 451, 55, 3, 2);
+}
+
+function paintResearch(ctx) {
+  panel(ctx, 269, 90, 114, 33, '#3c5057', '#768384');
+  rect(ctx, '#263b46', 274, 95, 104, 17);
+  for (const [x, fill] of [[281, '#687b83'], [306, '#7f9c99'], [331, '#b58e6c'], [356, '#617e86']]) {
+    panel(ctx, x, 97, 14, 12, fill, '#829893');
+    rect(ctx, '#bbc1a4', x + 3, 99, 8, 1);
+  }
 
   // 办公桌、证件位置、研究日志与暖色台灯。
   rect(ctx, '#17272e', 61, 146, 125, 9);
@@ -222,17 +278,18 @@ function paintRoom(ctx) {
   rect(ctx, '#fbe2a6', 86, 109, 9, 2);
   rect(ctx, '#f3c27538', 83, 112, 17, 5);
   rect(ctx, '#f3c27522', 81, 117, 25, 10);
+}
 
-  // 安全终端及冷却设备。
-  rect(ctx, '#1b2b34', 219, 114, 59, 9);
-  panel(ctx, 225, 83, 47, 35, '#425865', '#759094');
-  rect(ctx, '#182b35', 229, 85, 39, 25);
-  rect(ctx, '#457077', 231, 87, 35, 20);
-  rect(ctx, '#11343f', 233, 88, 31, 17);
-  rect(ctx, '#255a62', 233, 88, 31, 2);
-  rect(ctx, '#212f37', 229, 112, 40, 4);
-  for (let x = 235; x < 256; x += 4) rect(ctx, '#6e8b88', x, 113, 2, 1);
-  rect(ctx, '#e7a968', 260, 113, 5, 1);
+function paintMaintenance(ctx) {
+  panel(ctx, 94, 89, 91, 32, '#414747', '#737866');
+  rect(ctx, '#252f34', 100, 95, 79, 19);
+  for (const x of [106, 123, 142, 158]) {
+    rect(ctx, '#a9a085', x, 100, 12, 2);
+    rect(ctx, '#667b80', x + 4, 97, 3, 9);
+  }
+
+  ctx.save();
+  ctx.translate(0, OBJECTS.cooling.y - 193);
   rect(ctx, '#3c6470', 326, 142, 75, 50);
   rect(ctx, '#162730', 328, 145, 74, 49);
   panel(ctx, 330, 145, 70, 45, '#344c55', '#6a8383');
@@ -249,6 +306,10 @@ function paintRoom(ctx) {
   rect(ctx, '#20343e', 334, 176, 62, 10);
   for (let x = 339; x <= 383; x += 4) rect(ctx, '#526b70', x, 179, 2, 4);
   rect(ctx, '#81c9b0', 390, 178, 3, 2);
+  ctx.restore();
+
+  ctx.save();
+  ctx.translate(OBJECTS.locker.x - 57, 0);
   rect(ctx, '#384b52', 25, 168, 30, 46);
   for (const y of [168, 191]) {
     panel(ctx, 24, y, 32, 20, '#42545a', '#667879');
@@ -256,11 +317,70 @@ function paintRoom(ctx) {
     rect(ctx, '#6e8180', 28, y + 7, 7, 2);
     rect(ctx, '#5d757c', 43, y + 12, 7, 2);
   }
+  ctx.restore();
   for (const [x, y] of [[23, 94], [194, 173], [420, 187]]) {
     rect(ctx, '#23343d', x, y, 25, 10);
     rect(ctx, '#58696b', x, y, 25, 1);
     for (let bar = x + 2; bar < x + 24; bar += 3) rect(ctx, '#142630', bar, y + 2, 1, 6);
   }
+}
+
+function paintDuty(ctx) {
+  panel(ctx, 82, 102, 91, 36, '#564d50', '#8d777a');
+  rect(ctx, '#6c5d5d', 85, 104, 85, 21);
+  rect(ctx, '#776859', 94, 109, 25, 10);
+  rect(ctx, '#cfba96', 96, 109, 20, 7);
+  paintScreen(ctx, 137, 101, 'idle', 0);
+  panel(ctx, 313, 198, 63, 34, '#3d414d', '#73747c');
+  for (const x of [315, 345]) {
+    rect(ctx, '#49515e', x, 200, 28, 25);
+    rect(ctx, '#83919b', x + 12, 202, 4, 2);
+  }
+  panel(ctx, 49, 32, 111, 20, '#3f373f', '#7f6b73');
+  for (const x of [55, 76, 100, 121]) rect(ctx, '#b09c83', x, 36, 14, 11);
+}
+
+function paintService(ctx) {
+  panel(ctx, 302, 96, 110, 34, '#3d5453', '#75847a');
+  rect(ctx, '#182c2e', 308, 101, 97, 22);
+  for (const y of [105, 111, 117]) {
+    rect(ctx, '#5e8580', 311, y, 91, 3);
+    for (const x of [323, 356, 387]) rect(ctx, '#a0a68e', x, y - 1, 3, 5);
+  }
+  panel(ctx, 329, 193, 66, 33, '#3b4e50', '#6b7e77');
+  rect(ctx, '#2c3c3d', 335, 199, 54, 19);
+  for (let x = 340; x < 388; x += 7) rect(ctx, '#b18d55', x, 215, 4, 3);
+  rect(ctx, '#435951', 26, 180, 278, 3);
+  rect(ctx, '#435951', 224, 88, 3, 91);
+}
+
+const paintScene = {
+  research: paintResearch, control: paintControl, archive: paintArchive,
+  maintenance: paintMaintenance, exit: paintExit, duty: paintDuty, service: paintService
+};
+
+function paintRoomLink(ctx, side) {
+  const {axis, boundary, center, sign} = DOORS[side];
+  const span = DOOR_HALF_WIDTH * 2;
+  ctx.save();
+  if (axis === 'x') {
+    ctx.translate(boundary, center);
+    ctx.scale(-sign, 1);
+    rect(ctx, '#0b1920', -23, -DOOR_HALF_WIDTH, 32, span);
+    rect(ctx, '#3a5963', -14, -DOOR_HALF_WIDTH, 42, 3);
+    rect(ctx, '#3a5963', -14, DOOR_HALF_WIDTH - 3, 42, 3);
+    rect(ctx, '#324950', 8, -DOOR_HALF_WIDTH + 3, 7, span - 6);
+    for (const y of [-17, -7, 3, 13]) rect(ctx, '#78a79e', 10, y, 2, 4);
+  } else {
+    ctx.translate(center, boundary);
+    ctx.scale(1, -sign);
+    const depth = side === 'north' ? 41 : 20;
+    rect(ctx, '#0b1920', -DOOR_HALF_WIDTH, -depth, span, depth + 8);
+    for (const x of [-DOOR_HALF_WIDTH, DOOR_HALF_WIDTH - 3]) rect(ctx, '#3a5963', x, -depth, 3, depth + 18);
+    rect(ctx, '#324950', -DOOR_HALF_WIDTH + 3, 7, span - 6, 7);
+    for (const x of [-17, -7, 3, 13]) rect(ctx, '#78a79e', x, 9, 4, 2);
+  }
+  ctx.restore();
 }
 
 function drawDoor(ctx, opening, route) {
@@ -335,10 +455,16 @@ function drawPlayer(ctx, player, time) {
 export function createPainter(canvas) {
   const ctx = canvas.getContext('2d', {alpha: false});
   ctx.imageSmoothingEnabled = false;
-  const backdrop = document.createElement('canvas');
-  backdrop.width = WIDTH;
-  backdrop.height = HEIGHT;
-  paintRoom(backdrop.getContext('2d'));
+  const backdrops = Object.fromEntries(Object.entries(ROOMS).map(([room, {doors}]) => {
+    const backdrop = document.createElement('canvas');
+    backdrop.width = WIDTH;
+    backdrop.height = HEIGHT;
+    const background = backdrop.getContext('2d');
+    paintStructure(background, room);
+    paintScene[room](background);
+    for (const side of Object.keys(doors)) paintRoomLink(background, side);
+    return [room, backdrop];
+  }));
   const ambient = lightTexture(lighting => {
     const shade = lighting.createRadialGradient(235, 129, 42, 235, 129, 251);
     shade.addColorStop(0, '#0a101600');
@@ -347,13 +473,17 @@ export function createPainter(canvas) {
     lighting.fillStyle = shade;
     lighting.fillRect(0, 0, WIDTH, HEIGHT);
   });
-  const roomLights = lightTexture(lighting => {
-    glow(lighting, 103, 124, 83, 52, '238,165,83', .34);
-    glow(lighting, 151, 127, 44, 29, '253,202,115', .19);
-    glow(lighting, 247, 95, 73, 55, '39,202,199', .31);
-    glow(lighting, 362, 163, 67, 45, '35,159,174', .27);
-    glow(lighting, 87, 48, 76, 38, '44,125,156', .19);
-  });
+  const roomLights = Object.fromEntries(Object.entries({
+    research: [[103, 124, 83, 52, '238,165,83', .39], [325, 98, 74, 42, '245,209,138', .17]],
+    control: [[333, 95, 73, 55, '39,202,199', .31], [106, 96, 75, 40, '76,185,199', .24]],
+    archive: [[87, 48, 76, 38, '134,128,230', .33], [350, 113, 93, 98, '136,116,197', .27]],
+    maintenance: [[126, 165, 102, 72, '237,163,86', .33], [362, 115, 67, 45, '35,159,174', .36]],
+    exit: [[219, 94, 88, 55, '82,143,160', .29]],
+    duty: [[129, 111, 109, 64, '233,155,120', .3]],
+    service: [[352, 108, 108, 59, '116,211,174', .31]]
+  }).map(([room, lights]) => [room, lightTexture(lighting => {
+    for (const light of lights) glow(lighting, ...light);
+  })]));
   const alarmLight = lightTexture(lighting => {
     glow(lighting, 399, 21, 57, 41, '246,87,76', .48);
     glow(lighting, 400, 75, 47, 54, '211,68,65', .32);
@@ -364,9 +494,10 @@ export function createPainter(canvas) {
   })]));
 
   return (state, player, opening, pending, time) => {
-    ctx.drawImage(backdrop, 0, 0);
-    drawDoor(ctx, opening, state.unlocked ? state.route : null);
-    if (!state.card) {
+    const {room} = player;
+    ctx.drawImage(backdrops[room], 0, 0);
+    if (room === 'exit') drawDoor(ctx, opening, state.unlocked ? state.route : null);
+    if (room === 'research' && !state.card) {
       rect(ctx, '#7e634c', 104, 123, 10, 7);
       rect(ctx, '#f1dca9', 104, 122, 10, 6);
       rect(ctx, '#716e64', 105, 123, 3, 3);
@@ -375,25 +506,31 @@ export function createPainter(canvas) {
     ctx.drawImage(ambient, 0, 0, WIDTH, HEIGHT);
     ctx.save();
     ctx.globalCompositeOperation = 'screen';
-    ctx.drawImage(roomLights, 0, 0, WIDTH, HEIGHT);
-    ctx.globalAlpha = state.unlocked ? .42 + opening * .58 : .89 + .11 * Math.cos(time / 530);
-    ctx.drawImage(state.unlocked ? exitLights[state.route] : alarmLight, 0, 0, WIDTH, HEIGHT);
+    ctx.drawImage(roomLights[room], 0, 0, WIDTH, HEIGHT);
+    if (room === 'exit') {
+      ctx.globalAlpha = state.unlocked ? .42 + opening * .58 : .89 + .11 * Math.cos(time / 530);
+      ctx.drawImage(state.unlocked ? exitLights[state.route] : alarmLight, 0, 0, WIDTH, HEIGHT);
+    }
     ctx.restore();
-    if (state.rack) {
+
+    if (room === 'archive' && state.rack) {
       rect(ctx, state.archiveRecovered ? '#9fedb9' : '#e0ab72', 89, 41, 3, 2);
+    } else if (room === 'maintenance') {
+      const serviceLight = state.coupler ? '#4a6669' : state.reportConfirmed ? '#f5ba79' : '#8c6456';
+      rect(ctx, serviceLight, 101, 197, 3, 2);
+      if (state.coolingRestored) {
+        rect(ctx, '#8ae1d1', 349, 111, 35, 1);
+        rect(ctx, '#a1f3d7', 390, 130, 3, 2);
+      }
+      const coolingPulse = 348 + Math.floor(time / 115) % 34;
+      rect(ctx, '#84d6ca', coolingPulse, 111, 3, 1);
+    } else if (room === 'control') {
+      paintScreen(ctx, 321, 84, state.unlocked ? 'granted' : pending ? 'busy' : 'idle', time);
+    } else if (room === 'exit') {
+      const sensorLight = state.passageSafe ? '#99e9b3' : '#8ae1d1';
+      rect(ctx, state.scannedA ? sensorLight : '#7e746b', 446, 55, 3, 2);
+      rect(ctx, state.scannedB ? sensorLight : '#7e746b', 451, 55, 3, 2);
     }
-    const serviceLight = state.coupler ? '#4a6669' : state.reportConfirmed ? '#f5ba79' : '#8c6456';
-    rect(ctx, serviceLight, 31, 197, 3, 2);
-    const sensorLight = state.passageSafe ? '#99e9b3' : '#8ae1d1';
-    rect(ctx, state.scannedA ? sensorLight : '#7e746b', 446, 55, 3, 2);
-    rect(ctx, state.scannedB ? sensorLight : '#7e746b', 451, 55, 3, 2);
-    if (state.coolingRestored) {
-      rect(ctx, '#8ae1d1', 349, 159, 35, 1);
-      rect(ctx, '#a1f3d7', 390, 178, 3, 2);
-    }
-    paintScreen(ctx, 236, 84, state.unlocked ? 'granted' : pending ? 'busy' : 'idle', time);
-    const coolingPulse = 348 + Math.floor(time / 115) % 34;
-    rect(ctx, '#84d6ca', coolingPulse, 159, 3, 1);
     drawPlayer(ctx, player, time);
   };
 }

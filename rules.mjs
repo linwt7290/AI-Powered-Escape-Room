@@ -1,3 +1,5 @@
+import {AIRLOCK_ACTIONS, canControlAirlock, initialAirlock} from './airlock.mjs';
+
 export const UNLOCK_REQUIREMENTS = [
   'card', 'journal', 'rack', 'archiveRecovered', 'identity', 'password', 'reportConfirmed',
   'coupler', 'coolingRestored', 'passageSafe'
@@ -6,7 +8,9 @@ export const UNLOCK_REQUIREMENTS = [
 export const SCAN_FIELDS = {A: 'scannedA', B: 'scannedB'};
 export const SCAN_ACTIONS = {A: 'scan_route_a', B: 'scan_route_b'};
 export const ECHO_FIELDS = [...UNLOCK_REQUIREMENTS, 'alignedPipe', ...Object.values(SCAN_FIELDS), 'unlocked', 'escaped'];
-export const ECHO_ACTIONS = ['reply', 'recover_archive', 'align_pipe', ...Object.values(SCAN_ACTIONS), 'request_unlock'];
+export const ECHO_ACTIONS = [
+  'reply', 'recover_archive', 'align_pipe', ...Object.values(SCAN_ACTIONS), 'request_unlock', ...Object.values(AIRLOCK_ACTIONS)
+];
 
 export function initialState() {
   return {
@@ -14,14 +18,14 @@ export function initialState() {
     reportOpen: false, reportConfirmed: false, coupler: false, coolingRestored: false,
     alignedPipe: false, scannedA: false, scannedB: false,
     passageSafe: false, route: null,
-    unlocked: false, escaped: false
+    unlocked: false, escaped: false, airlock: initialAirlock()
   };
 }
 
 export function canUnlock(state) {
   return UNLOCK_REQUIREMENTS.every(key => state[key] === true) &&
     Object.hasOwn(SCAN_FIELDS, state.route) && state[SCAN_FIELDS[state.route]] === true &&
-    !state.unlocked && !state.escaped;
+    !state.unlocked && !state.escaped && !state.airlock?.authorized;
 }
 
 export function canEchoAct(state, action) {
@@ -33,6 +37,6 @@ export function canEchoAct(state, action) {
     case SCAN_ACTIONS.A: return state.coolingRestored && !state.scannedA && !state.passageSafe;
     case SCAN_ACTIONS.B: return state.coolingRestored && !state.scannedB && !state.passageSafe;
     case 'request_unlock': return canUnlock(state);
-    default: return false;
+    default: return canControlAirlock(state.airlock, action);
   }
 }
