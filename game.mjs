@@ -1,14 +1,18 @@
 import {phrase} from './i18n.mjs';
 import {applyLanguage, locale, localText, t} from './ui-language.mjs';
-import {canEchoAct, initialState, SCAN_ACTIONS, SCAN_FIELDS} from './rules.mjs';
-import {DOORS, EXIT, HEIGHT, move, nearbyObject, OBJECTS, PASSAGE_LANES, ROOMS, SPAWN, WIDTH} from './room.mjs';
-import {createPainter, drawEcho} from './pixel-art.mjs';
+import {canEchoAct, currentObjective, initialState, SCAN_ACTIONS, SCAN_FIELDS} from './rules.mjs';
+import {DOORS, EXIT, HEIGHT, move, nearbyObject, nextDoor, OBJECTS, PASSAGE_LANES, PROP_BY_ROOM, ROOMS, SPAWN, WIDTH} from './room.mjs';
+import {createRoomProps} from './room-props.mjs';
+import {createPainter, drawEcho, drawTitleScene} from './pixel-art.mjs';
 import {createCase, EXPERIMENTS, FLOW_RESULT, incidentReport, LOG_CLUE, RACK_CLUE} from './puzzles.mjs';
-import {createDevices} from './devices.mjs';
+import {createDevices, describeRouteReadings} from './devices.mjs';
 import {AIRLOCK_ACTIONS, applyAirlockAction, leaveChamber} from './airlock.mjs';
 import {createAirlockPanel} from './airlock-panel.mjs';
 
 const byId = id => document.getElementById(id);
+const titleScreen = byId('titleScreen');
+const gameScreen = byId('gameScreen');
+const intro = byId('introDialog');
 const panels = [...document.querySelectorAll('dialog')];
 const markers = Object.fromEntries(
   Array.from(document.querySelectorAll('[data-marker]'), element => [element.dataset.marker, element])
@@ -28,19 +32,24 @@ const mapRooms = Object.fromEntries(Object.entries(ROOMS).map(([room, {name, pos
 }));
 const progressBars = [...document.querySelectorAll('.progress-bars i')];
 const roomAction = byId('roomAction');
+const propMarker = byId('propMarker');
+const stageTaskMark = byId('stageTaskMark');
+const echoTaskMark = byId('echoTaskMark');
 const touchAction = byId('touchAction');
 const code = byId('code');
 const terminal = byId('terminalDialog');
 const notebook = byId('journalDialog');
 const chat = byId('echoDialog');
 const passage = byId('passageDialog');
+const evidenceCards = byId('evidenceCards');
+const notebookHost = notebook.querySelector('[data-evidence-host]');
+const routeEvidence = [...document.querySelectorAll('[data-route-reading]')];
 const evidenceButtons = [...document.querySelectorAll('[data-evidence]')];
 const chatInput = byId('chatInput');
 const conversation = byId('conversation');
 const portrait = byId('echoPortrait');
 const quickActions = [
   {label: '恢复机柜存档', text: '请恢复机柜存档。', actions: ['recover_archive']},
-  {label: '校准一段管路', text: '请远程校准一段管路。', actions: ['align_pipe']},
   {label: '请 ECHO 选择扫描对象', text: '请选择一条待查通道进行扫描。', actions: Object.values(SCAN_ACTIONS)},
   {label: '扫描 A 通道', text: '请扫描 A 通道。', actions: [SCAN_ACTIONS.A]},
   {label: '扫描 B 通道', text: '请扫描 B 通道。', actions: [SCAN_ACTIONS.B]}
@@ -56,7 +65,7 @@ const quickActions = [
   byId('echoActions').append(button);
   return {button, actions};
 });
-const paint = createPainter(byId('room'));
+let paint;
 const motion = matchMedia('(prefers-reduced-motion: reduce)');
 const desktopPointer = matchMedia('(pointer: fine)');
 const keys = new Map(Object.entries({
@@ -65,6 +74,13 @@ const keys = new Map(Object.entries({
 }));
 const pressed = new Map();
 const touch = new Map();
+const taskHintsPreference = 'last-protocol-task-hints';
+let showTaskHints = true;
+try {
+  showTaskHints = localStorage.getItem(taskHintsPreference) !== 'off';
+} catch {
+  // The preference can still be changed for the current session.
+}
 const openingMessage = '实验室已封锁。先调查研究室的办公桌，沿门牌指引可进入其他房间。';
 const startNotice = '请刷工作证，并用两份实验记录推导密码。';
 const modeLabels = {
@@ -80,7 +96,6 @@ let connection = '正在连接';
 let nearest;
 const visitedRooms = new Set();
 let evidenceSource;
-let returnToAirlock = false;
 let lastEchoTrace;
 let opening = 0;
 let lastFrame = performance.now();
@@ -98,6 +113,7 @@ for (const sign of doorSigns) pin(sign, ...DOORS[sign.dataset.roomDoor].label);
 
 const devices = createDevices(() => state, setMessage, render);
 const airlockPanel = createAirlockPanel(() => state, publishAirlockEvent);
+const roomProps = createRoomProps(openPanel, render);
 localText(byId('journalClue'), LOG_CLUE);
 
 function setMessage(message) {
@@ -120,6 +136,9 @@ function setChatStatus(text = '', error = false) {
 
 function renderComms() {
   localText(byId('echoStatus'), connection);
+  const pressure = byId('echoPressure');
+  pressure.hidden = !state.coolingFaultRow;
+  if (!pressure.hidden) localText(pressure, phrase('ECHO 检测到第 {row} 行掉压。', {row: state.coolingFaultRow}));
   chat.dataset.phase = state.unlocked ? 'granted' : pending ? 'busy' : 'idle';
   byId('send').disabled = Boolean(pending) || !chatInput.value.trim();
   chatInput.readOnly = Boolean(pending);
@@ -137,6 +156,13 @@ function renderTarget() {
     const object = OBJECTS[nearest];
     localText(byId('actionLabel'), object.label);
     pin(roomAction, object.x, object.anchor);
+  }
+  const prop = PROP_BY_ROOM[player.room];
+  propMarker.hidden = !prop || nearest === prop;
+  if (!propMarker.hidden) {
+    const {x, anchor, title} = OBJECTS[prop];
+    pin(propMarker, x, anchor);
+    localText(propMarker, title);
   }
   markers.desk.hidden = player.room !== 'research' || (state.card && state.journal) || nearest === 'card' || nearest === 'journal';
   markers.rack.hidden = player.room !== 'archive' || !state.journal || state.rack || nearest === 'rack';
@@ -176,21 +202,23 @@ function renderRoom() {
   byId('room').setAttribute('aria-label', t(phrase('{room}。相邻房间 {neighbors}', {room: name, neighbors: destinations.join(locale() === 'en' ? ', ' : '、')})));
 }
 
-function objective() {
-  if (state.escaped) return '撤离完成';
-  if (state.unlocked) return phrase('从 {route} 通道撤离', {route: state.route});
-  if (state.airlock.authorized) return '到撤离区操作缓冲舱';
-  if (state.passageSafe) return '提交实测结果给 ECHO';
-  if (state.coolingRestored && !state.scannedA && !state.scannedB) return '请 ECHO 扫描通道';
-  if (state.coolingRestored) return '到撤离区核验通道';
-  if (state.coupler) return '在维修间接通备用冷却';
-  if (state.reportConfirmed) return '到维修间取耦合器';
-  if (state.password) return '查阅事故报告';
-  if (state.identity && state.journal && state.archiveRecovered) return '推导终端密码';
-  if (state.card && state.journal && state.archiveRecovered) return '到控制室刷卡';
-  if (state.rack && !state.archiveRecovered) return '请 ECHO 恢复存档';
-  if (state.card && state.journal) return '到档案室读取存档';
-  return '调查研究室办公桌';
+function renderObjective() {
+  const {label, target} = currentObjective(state);
+  localText(byId('objective'), label);
+  echoTaskMark.hidden = !showTaskHints || target !== 'echo';
+  stageTaskMark.hidden = !showTaskHints || !target || target === 'echo';
+  if (stageTaskMark.hidden) return;
+
+  const object = OBJECTS[target === 'lane' ? 'exit' : target];
+  if (player.room !== object.room) {
+    const door = nextDoor(player.room, object.room);
+    stageTaskMark.hidden = !door;
+    if (door) pin(stageTaskMark, ...DOORS[door].label);
+    return;
+  }
+
+  const x = target === 'lane' ? PASSAGE_LANES[state.route].center : object.x;
+  pin(stageTaskMark, x, object.anchor);
 }
 
 function render() {
@@ -198,14 +226,15 @@ function render() {
   const progress = [clues, state.reportConfirmed, state.coolingRestored, state.passageSafe, state.unlocked];
   byId('progressCount').textContent = progress.filter(Boolean).length + ' / ' + progress.length;
   progressBars.forEach((bar, index) => { bar.dataset.done = String(progress[index]); });
-  localText(byId('objective'), objective());
+  renderObjective();
 
   const door = state.escaped ? 'escaped' : state.unlocked ? 'unlocked' : 'locked';
   byId('stage').dataset.door = byId('doorStatus').dataset.state = door;
   localText(byId('doorLabel'), state.escaped ? '已撤离' : state.unlocked ? '出口已解锁'
     : state.airlock.authorized ? '撤离已授权' : '出口锁定');
   byId('cardSlot').disabled = !state.card || state.escaped;
-  byId('journalSlot').disabled = !(state.journal || state.rack) || state.escaped;
+  const hasEvidence = state.journal || state.rack || state.reportConfirmed || state.coolingRestored || roomProps.active.shiftLog;
+  byId('journalSlot').disabled = !hasEvidence || state.escaped;
   for (const button of evidenceButtons) button.disabled = byId('journalSlot').disabled;
   byId('journalEvidence').hidden = !state.journal;
   byId('rackEvidence').hidden = !state.rack;
@@ -213,6 +242,14 @@ function render() {
   byId('recoverArchive').hidden = !canEchoAct(state, 'recover_archive');
   byId('reportEvidence').hidden = !state.reportConfirmed;
   byId('recoveryEvidence').hidden = !state.coolingRestored;
+  byId('shiftEvidence').hidden = !roomProps.active.shiftLog;
+  for (const reading of routeEvidence) {
+    const route = reading.dataset.routeReading;
+    reading.hidden = !state[SCAN_FIELDS[route]];
+    if (!reading.hidden) {
+      reading.textContent = t(phrase('{route} 通道', {route})) + ' · ' + t(describeRouteReadings(incident.routes[route]));
+    }
+  }
   byId('recoverySummary').textContent = t(FLOW_RESULT) + ' ' + t(state.passageSafe
     ? phrase('{route} 通道通过检测。', {route: state.route}) : '出口通道待检测。');
   byId('reportText').textContent = byId('reportSummary').textContent = incidentReport(incident.kind, locale());
@@ -246,14 +283,28 @@ function openPanel(panel) {
 
 const settings = byId('settingsDialog');
 const languageOptions = [...settings.querySelectorAll('input[name="language"]')];
-byId('openSettings').addEventListener('click', () => {
+const taskHints = byId('taskHints');
+function openSettings() {
   for (const option of languageOptions) option.checked = option.value === locale();
+  taskHints.checked = showTaskHints;
   openPanel(settings);
+}
+byId('openSettings').addEventListener('click', openSettings);
+byId('openTitleSettings').addEventListener('click', openSettings);
+taskHints.addEventListener('change', () => {
+  showTaskHints = taskHints.checked;
+  try {
+    localStorage.setItem(taskHintsPreference, showTaskHints ? 'on' : 'off');
+  } catch {
+    // The current session still keeps the new value.
+  }
+  if (!gameScreen.hidden) renderObjective();
 });
 for (const option of languageOptions) {
   option.addEventListener('change', () => {
     if (!option.checked) return;
     applyLanguage(option.value);
+    if (gameScreen.hidden) return;
     devices.refreshLanguage();
     renderRoom();
     render();
@@ -265,21 +316,37 @@ for (const button of document.querySelectorAll('[data-close]')) {
   button.addEventListener('click', () => button.closest('dialog').close());
 }
 
-for (const button of evidenceButtons) {
-  button.addEventListener('click', () => {
-    evidenceSource = button;
-    button.closest('dialog').close();
-    openPanel(notebook);
-  });
+function closeInlineEvidence() {
+  if (!evidenceSource) return;
+  evidenceSource.setAttribute('aria-expanded', 'false');
+  evidenceSource.closest('dialog').querySelector('[data-evidence-host]').hidden = true;
+  evidenceSource = undefined;
 }
 
-notebook.addEventListener('close', () => {
-  if (!evidenceSource || notebook.open) return;
-  const button = evidenceSource;
-  evidenceSource = undefined;
-  openPanel(button.closest('dialog'));
-  button.focus();
-});
+function openNotebook(card) {
+  closeInlineEvidence();
+  notebookHost.append(evidenceCards);
+  if (card) byId(card).open = true;
+  openPanel(notebook);
+}
+
+for (const button of evidenceButtons) {
+  button.addEventListener('click', () => {
+    const alreadyOpen = evidenceSource === button;
+    closeInlineEvidence();
+    if (alreadyOpen) return;
+    const host = button.closest('dialog').querySelector('[data-evidence-host]');
+    host.append(evidenceCards);
+    host.hidden = false;
+    button.setAttribute('aria-expanded', 'true');
+    evidenceSource = button;
+  });
+}
+for (const panel of panels) {
+  panel.addEventListener('close', () => {
+    if (!panel.open && evidenceSource?.closest('dialog') === panel) closeInlineEvidence();
+  });
+}
 
 const actions = {
   card() {
@@ -292,14 +359,14 @@ const actions = {
       state.journal = true;
       setMessage('已收录研究日志。');
     }
-    openPanel(notebook);
+    openNotebook('journalEvidence');
   },
   rack() {
     if (!state.rack) {
       state.rack = true;
       setMessage('机柜存档已损坏。按 Q 请 ECHO 恢复时序记录。');
     }
-    openPanel(notebook);
+    openNotebook('rackEvidence');
   },
   locker() {
     if (!state.reportConfirmed) {
@@ -326,7 +393,8 @@ const actions = {
     openPanel(byId('coolingDialog'));
   },
   exit() {
-    openPanel(passage);
+    if (state.airlock.authorized) openEcho({airlock: true});
+    else openPanel(passage);
   }
 };
 
@@ -334,7 +402,8 @@ function interact() {
   if (state.escaped || panels.some(panel => panel.open)) return;
   const key = nearbyObject(player, state);
   if (!key) return;
-  actions[key]();
+  if (actions[key]) actions[key]();
+  else roomProps.open(key);
   nearest = nearbyObject(player, state);
   render();
 }
@@ -344,7 +413,7 @@ touchAction.addEventListener('click', interact);
 byId('cardSlot').addEventListener('click', () => {
   setMessage(state.identity ? '身份已验证。' : '已取得研究员工作证。请到安全终端刷卡。');
 });
-byId('journalSlot').addEventListener('click', () => openPanel(notebook));
+byId('journalSlot').addEventListener('click', () => openNotebook());
 
 byId('scan').addEventListener('click', () => {
   if (!state.card) {
@@ -412,35 +481,35 @@ function publishAirlockEvent(outcome) {
   render();
 }
 
-function openEcho() {
+function openEcho({airlock = player.room === 'exit' && state.airlock.authorized && !state.unlocked} = {}) {
   if (state.escaped) return;
+  chat.dataset.console = airlock ? 'airlock' : 'comms';
+  airlockPanel.render();
   openPanel(chat);
   conversation.scrollTop = conversation.scrollHeight;
-  if (desktopPointer.matches && !pending) chatInput.focus();
+  if (desktopPointer.matches && !pending && !airlock) chatInput.focus();
 }
 
-byId('openEcho').addEventListener('click', openEcho);
+byId('openEcho').addEventListener('click', () => openEcho());
 for (const id of ['recoverArchive', 'askAlignment', 'askScan']) {
   byId(id).addEventListener('click', event => {
-    evidenceSource = undefined;
-    event.currentTarget.closest('dialog').close();
+    const source = event.currentTarget.closest('dialog');
+    if (source === chat) {
+      chatInput.value = t('请恢复机柜存档。');
+      renderComms();
+      chatInput.focus();
+      return;
+    }
+    closeInlineEvidence();
+    source.close();
     openEcho();
   });
 }
-byId('askAirlock').addEventListener('click', () => {
-  returnToAirlock = true;
-  passage.close();
-  openEcho();
-});
-passage.addEventListener('close', () => {
-  if (passage.open || returnToAirlock) return;
+chat.addEventListener('close', () => {
+  if (chat.open || chat.dataset.console !== 'airlock') return;
+  chat.dataset.console = 'comms';
   const outcome = leaveChamber(state.airlock, locale());
   if (outcome) publishAirlockEvent(outcome);
-});
-chat.addEventListener('close', () => {
-  if (chat.open || !returnToAirlock || evidenceSource?.closest('dialog') === chat) return;
-  returnToAirlock = false;
-  openPanel(passage);
 });
 chatInput.addEventListener('input', renderComms);
 chatInput.addEventListener('keydown', event => {
@@ -461,13 +530,14 @@ async function checkConnection() {
   renderComms();
 }
 
-function applyEchoAction(action) {
+function applyEchoAction({action, row, column}) {
   if (!canEchoAct(state, action)) return '设备状态已变化，请重新请求。';
   if (action === 'recover_archive') {
     state.archiveRecovered = true;
     return '机柜时序记录已恢复。打开调查记录，与研究日志核对。';
   }
   if (action === 'align_pipe') return devices.align();
+  if (action === 'isolate_pipe') return devices.isolate(row, column);
   if (action === 'request_unlock') {
     state.airlock.authorized = true;
     return phrase('撤离已授权。前往撤离区，操作 {route} 通道的缓冲舱。', {route: state.route});
@@ -508,7 +578,7 @@ byId('chatForm').addEventListener('submit', async event => {
     history.push({role: 'user', content: message}, {role: 'assistant', content: decision.reply});
     addTurn('assistant', decision.reply);
 
-    const outcome = applyEchoAction(decision.action);
+    const outcome = applyEchoAction(decision);
     if (decision.action !== 'reply') {
       addTurn('device', outcome);
       setMessage(outcome);
@@ -544,7 +614,7 @@ window.visualViewport?.addEventListener('resize', syncViewport);
 window.visualViewport?.addEventListener('scroll', syncViewport);
 
 window.addEventListener('keydown', event => {
-  if (event.ctrlKey || event.altKey || event.metaKey || event.isComposing || panels.some(panel => panel.open)) return;
+  if (gameScreen.hidden || event.ctrlKey || event.altKey || event.metaKey || event.isComposing || panels.some(panel => panel.open)) return;
   if (event.target instanceof Element && event.target.closest('input, textarea, [contenteditable]')) return;
   const direction = keys.get(event.code);
   if (direction) {
@@ -583,6 +653,9 @@ function escapeRoom() {
   setMessage('撤离完成。实验室已进入维护模式。');
   localText(byId('endingReport'), phrase('你经 {route} 通道撤离。备用冷却持续运行，实验室已进入维护模式。', {route: state.route}));
   render();
+  const endingEcho = byId('endingEcho');
+  endingEcho.hidden = !roomProps.active.brewedCoffee;
+  localText(endingEcho, 'ECHO：你刚才还冲了杯咖啡。夜班结束，辛苦了。');
   openPanel(byId('endingDialog'));
 }
 
@@ -590,8 +663,10 @@ function reset() {
   pending?.abort();
   pending = undefined;
   clearMovement();
-  evidenceSource = undefined;
-  returnToAirlock = false;
+  closeInlineEvidence();
+  notebookHost.append(evidenceCards);
+  for (const card of evidenceCards.querySelectorAll('details')) card.open = false;
+  chat.dataset.console = 'comms';
   lastEchoTrace = undefined;
   panels.forEach(panel => panel.close());
   state = initialState();
@@ -608,6 +683,7 @@ function reset() {
   byId('experimentDigits').replaceChildren(...digits);
   devices.reset(incident);
   airlockPanel.reset(incident);
+  roomProps.reset();
   player = {...SPAWN, facing: 'down', moving: false, pickupUntil: 0};
   visitedRooms.clear();
   history = [];
@@ -627,6 +703,19 @@ function reset() {
 
 byId('reset').addEventListener('click', reset);
 byId('playAgain').addEventListener('click', reset);
+byId('startGame').addEventListener('click', () => openPanel(intro));
+byId('enterLab').addEventListener('click', () => {
+  if (!gameScreen.hidden) return;
+  intro.close();
+  titleScreen.hidden = true;
+  gameScreen.hidden = false;
+  paint = createPainter(byId('room'));
+  reset();
+  checkConnection();
+  byId('gameTitle').focus();
+  lastFrame = performance.now();
+  requestAnimationFrame(frame);
+});
 
 function frame(time) {
   const elapsed = Math.min(time - lastFrame, 35);
@@ -659,13 +748,11 @@ function frame(time) {
     if (player.room === 'exit' && state.unlocked && player.y <= EXIT.threshold) escapeRoom();
   }
 
-  paint(state, player, opening, pending, visualTime);
+  paint(state, player, opening, pending, visualTime, roomProps.active);
   if (chat.open) drawEcho(portrait, state.unlocked ? 'granted' : pending ? 'busy' : 'idle', visualTime);
   requestAnimationFrame(frame);
 }
 
 applyLanguage();
-reset();
+drawTitleScene(byId('titleScene'));
 syncViewport();
-checkConnection();
-requestAnimationFrame(frame);

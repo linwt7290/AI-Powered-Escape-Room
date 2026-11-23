@@ -6,15 +6,28 @@
   <meta name="theme-color" content="#0b1118">
   <title>最后的协议 · 失控 AI 实验室</title>
   <link rel="icon" href="data:,">
+  <link rel="preload" href="assets/fonts/fusion-pixel-12px-zh-hans-2026.11.10.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="game.css">
   <script type="module" src="game.mjs"></script>
 </head>
 <body>
-  <main class="shell">
+  <main class="shell" id="titleScreen">
+    <section class="title-screen" aria-labelledby="startTitle">
+      <canvas id="titleScene" width="480" height="264" aria-hidden="true"></canvas>
+      <div class="title-copy">
+        <h1 id="startTitle">最后的协议</h1>
+        <p>实验室已封锁。联系 ECHO，查明事故并撤离。</p>
+        <button class="button primary" id="startGame" type="button" aria-haspopup="dialog" aria-controls="introDialog">开始游戏</button>
+      </div>
+      <button class="button title-settings" id="openTitleSettings" type="button" aria-haspopup="dialog" aria-controls="settingsDialog">设置</button>
+    </section>
+  </main>
+
+  <main class="shell" id="gameScreen" hidden>
     <header class="masthead">
       <div class="brand">
         <span class="brand-mark" aria-hidden="true"><i></i></span>
-        <h1>最后的协议</h1>
+        <h1 id="gameTitle" tabindex="-1">最后的协议</h1>
       </div>
       <div class="header-actions">
         <button class="button" id="openSettings" type="button" aria-haspopup="dialog" aria-controls="settingsDialog">设置</button>
@@ -61,6 +74,8 @@
           <span class="room-marker" data-marker="locker" hidden>维修柜</span>
           <span class="room-marker" data-marker="cooling" hidden>备用冷却</span>
           <span class="room-marker" data-marker="exit" hidden>出口检测台</span>
+          <span class="room-marker prop-marker" id="propMarker" hidden></span>
+          <span class="task-mark" id="stageTaskMark" hidden></span>
         </div>
         <button class="interact-prompt button" id="roomAction" type="button" hidden><kbd aria-hidden="true">E</kbd><span id="actionLabel"></span></button>
       </div>
@@ -81,6 +96,7 @@
           </button>
         </div>
         <button class="button echo-button" id="openEcho" type="button" aria-haspopup="dialog">
+          <span class="task-mark" id="echoTaskMark" aria-hidden="true" hidden></span>
           <span class="echo-icon" aria-hidden="true"></span><span>ECHO 通讯</span><kbd aria-hidden="true">Q</kbd>
         </button>
       </footer>
@@ -112,6 +128,21 @@
     </footer>
   </main>
 
+  <dialog class="panel journal-panel intro-panel" id="introDialog" aria-labelledby="introTitle">
+    <header class="panel-header">
+      <h2 id="introTitle">夜班交接信</h2>
+      <button class="button close" type="button" data-close aria-label="合上交接信">×</button>
+    </header>
+    <div class="panel-body intro-letter">
+      <p>给接班的研究员</p>
+      <p>警报响了三次，出口就封上了。我只来得及在广播里听清一句话。「撤离协议尚未完成。」</p>
+      <p>ECHO 还在线，也能操作实验室的设备。把你亲眼看到的情况告诉它，你们能一起查清发生了什么。</p>
+      <p>工作证和研究日志都在研究室的办公桌上。先把它们拿上。</p>
+      <p class="intro-signature">上一班值班员</p>
+      <button class="button primary" id="enterLab" type="button" autofocus>进入实验室</button>
+    </div>
+  </dialog>
+
   <dialog class="panel settings-panel" id="settingsDialog" aria-labelledby="settingsTitle">
     <header class="panel-header">
       <h2 id="settingsTitle">设置</h2>
@@ -123,6 +154,10 @@
         <label><input type="radio" name="language" value="zh-CN" checked><span lang="zh-CN" translate="no">简体中文</span></label>
         <label><input type="radio" name="language" value="en"><span lang="en" translate="no">English</span></label>
       </fieldset>
+      <label class="hint-option">
+        <span><strong id="taskHintsLabel">任务提示</strong><small id="taskHintsDescription">用感叹号标出下一步交互</small></span>
+        <input id="taskHints" type="checkbox" role="switch" aria-labelledby="taskHintsLabel" aria-describedby="taskHintsDescription" checked>
+      </label>
       <button class="button primary" type="button" data-close>完成</button>
     </div>
   </dialog>
@@ -132,25 +167,32 @@
       <h2 id="journalTitle">调查记录</h2>
       <button class="button close" type="button" data-close aria-label="关闭调查记录" autofocus>×</button>
     </header>
-    <div class="panel-body evidence-body">
-      <section id="journalEvidence" hidden>
-        <h3>研究日志</h3>
-        <dl class="journal-entries" id="experimentDigits"></dl>
-        <p class="inset" id="journalClue"></p>
-      </section>
-      <section id="rackEvidence" hidden>
-        <h3>机柜存档</h3>
-        <p class="inset" id="rackClue"></p>
-        <button class="button" id="recoverArchive" type="button">联系 ECHO 恢复存档</button>
-      </section>
-      <section id="reportEvidence" hidden>
-        <h3>事故报告</h3>
-        <p class="inset" id="reportSummary"></p>
-      </section>
-      <section id="recoveryEvidence" hidden>
-        <h3>现场实测</h3>
-        <p class="inset" id="recoverySummary"></p>
-      </section>
+    <div class="panel-body evidence-body" data-evidence-host>
+      <div id="evidenceCards" class="evidence-cards">
+        <details id="journalEvidence" hidden>
+          <summary>研究日志</summary>
+          <dl class="journal-entries" id="experimentDigits"></dl>
+          <p class="inset" id="journalClue"></p>
+        </details>
+        <details id="rackEvidence" hidden>
+          <summary>机柜存档</summary>
+          <p class="inset" id="rackClue"></p>
+          <button class="button" id="recoverArchive" type="button">联系 ECHO 恢复存档</button>
+        </details>
+        <details id="reportEvidence" hidden>
+          <summary>事故报告</summary>
+          <p class="inset" id="reportSummary"></p>
+        </details>
+        <details id="recoveryEvidence" hidden>
+          <summary>现场实测</summary>
+          <p class="inset" id="recoverySummary"></p>
+          <div id="recoveryReadings"><p data-route-reading="A" hidden></p><p data-route-reading="B" hidden></p></div>
+        </details>
+        <details id="shiftEvidence" hidden>
+          <summary>值班广播摘录</summary>
+          <p class="inset">「上回人刚进去就切电，联锁又拦住了。」</p>
+        </details>
+      </div>
     </div>
   </dialog>
 
@@ -171,7 +213,8 @@
           <button class="button primary" id="submitCode" type="submit" disabled>验证密码</button>
         </div>
       </form>
-      <button class="button" type="button" data-evidence disabled>查看调查记录</button>
+      <button class="button" type="button" data-evidence aria-expanded="false" disabled>查看调查记录</button>
+      <div data-evidence-host hidden></div>
       <button class="button" id="report" type="button" disabled>查看事故报告</button>
       <section class="inset report" id="reportView" hidden>
         <h3>事故报告</h3>
@@ -193,9 +236,10 @@
         <div class="circuit-labels"><span>备用泵入口</span></div>
         <div id="pipeGrid" class="pipe-grid" role="group" aria-label="四乘四管路。使用按钮旋转管段。"></div>
         <div class="circuit-labels circuit-outlet"><span>散热器出口</span></div>
+        <p class="device-hint" id="pressureReading" role="status"></p>
         <div class="device-actions">
           <button class="button" id="resetPipes" type="button">复原管路</button>
-          <button class="button" id="askAlignment" type="button">请 ECHO 校准</button>
+          <button class="button" id="askAlignment" type="button" hidden>和 ECHO 核对漏点</button>
           <button class="button primary" id="testPipes" type="button">执行试压</button>
         </div>
       </div>
@@ -218,29 +262,6 @@
         </form>
         <p class="panel-notice" id="passageNotice" role="status" hidden></p>
       </div>
-      <section id="airlockPanel" class="device-body" aria-label="缓冲舱门控" hidden>
-        <p class="device-hint" id="airlockSensor"></p>
-        <div class="airlock-door-display" id="airlockDoorDisplay" data-phase="outside" role="status">
-          <span class="airlock-lamp" aria-hidden="true"></span>
-          <span id="airlockDoorStatus"></span>
-        </div>
-        <p id="airlockSchedule" class="device-hint" hidden></p>
-        <div class="device-actions">
-          <button class="button primary" id="enterChamber" type="button">进入缓冲舱</button>
-          <button class="button" id="leaveChamber" type="button" hidden>退出缓冲舱并复位</button>
-          <button class="button" id="installSensor" type="button" hidden>安装门位传感器</button>
-          <button class="button" id="askAirlock" type="button">联系 ECHO</button>
-          <button class="button primary" id="airlockWalkOut" type="button" data-close hidden>回到场景，沿绿灯撤离</button>
-        </div>
-      </section>
-      <details class="airlock-log" id="airlockLog" hidden>
-        <summary>旧门控操作日志</summary>
-        <ol>
-          <li>人员进舱时亮黄灯。此时切电，联锁拒绝。</li>
-          <li>人员进舱后等到绿灯再切电，外门打开。</li>
-        </ol>
-        <p>备用电源一次只供一道门。</p>
-      </details>
     </div>
   </dialog>
 
@@ -258,8 +279,28 @@
           <button class="button primary" type="submit">开柜并取出传感器</button>
         </div>
       </form>
-      <button class="button" type="button" data-evidence>查看调查记录</button>
+      <button class="button" type="button" data-evidence aria-expanded="false">查看调查记录</button>
+      <div data-evidence-host hidden></div>
       <p class="panel-notice" id="sparesNotice" role="status" hidden></p>
+    </div>
+  </dialog>
+
+  <dialog class="panel prop-panel" id="propDialog" aria-labelledby="propTitle">
+    <header class="panel-header">
+      <h2 id="propTitle"></h2>
+      <button class="button close" type="button" data-close aria-label="关闭物品面板" autofocus>×</button>
+    </header>
+    <div class="panel-body">
+      <canvas id="propPreview" width="96" height="48" aria-hidden="true"></canvas>
+      <div class="prop-copy">
+        <p id="propDescription"></p>
+        <details class="airlock-log" id="propShiftLog" hidden>
+          <summary>值班广播摘录</summary>
+          <p>「上回人刚进去就切电，联锁又拦住了。」</p>
+        </details>
+        <p id="propStatus" class="panel-notice" role="status" hidden></p>
+        <button class="button primary" id="propAction" type="button" hidden></button>
+      </div>
     </div>
   </dialog>
 
@@ -270,24 +311,67 @@
         <h2 id="echoTitle">ECHO 通讯</h2>
         <p id="echoStatus">正在连接</p>
       </div>
-      <button class="button" type="button" data-evidence disabled>调查记录</button>
+      <button class="button" type="button" data-evidence aria-expanded="false" disabled>调查记录</button>
       <button class="button close" type="button" data-close aria-label="关闭 ECHO 通讯" autofocus>×</button>
     </header>
-    <div class="conversation" id="conversation" role="log" aria-label="ECHO 对话记录" tabindex="0"></div>
-    <div class="echo-actions" id="echoActions" aria-label="可请求的设备动作" hidden></div>
-    <p class="chat-status" id="chatStatus" role="status" hidden></p>
-    <form id="chatForm" class="chat-form">
-      <label class="visually-hidden" for="chatInput">给 ECHO 的消息</label>
-      <textarea id="chatInput" placeholder="输入给 ECHO 的消息…" rows="1" maxlength="1000" required></textarea>
-      <button class="button primary" id="send" type="submit">发送</button>
-    </form>
+    <div class="console-grid">
+      <section id="airlockPanel" class="airlock-console" aria-label="缓冲舱门控" hidden>
+        <div class="airlock-monitor">
+          <div class="airlock-doors" role="group" aria-label="缓冲舱双门">
+            <div class="airlock-door" id="innerDoor" data-state="standby">
+              <span class="airlock-door-art" aria-hidden="true"></span>
+              <strong>内门</strong><span id="innerDoorState"></span>
+            </div>
+            <div class="airlock-door" id="outerDoor" data-state="locked">
+              <span class="airlock-door-art" aria-hidden="true"></span>
+              <strong>外门</strong><span id="outerDoorState"></span>
+            </div>
+          </div>
+          <div class="airlock-door-display" id="airlockDoorDisplay" data-phase="outside" role="status">
+            <span class="airlock-lamp" aria-hidden="true"></span>
+            <span id="airlockDoorStatus"></span>
+          </div>
+        </div>
+        <p class="device-hint" id="airlockSensor"></p>
+        <p id="airlockSchedule" class="device-hint" hidden></p>
+        <div class="device-actions">
+          <button class="button primary" id="enterChamber" type="button">进入缓冲舱</button>
+          <button class="button" id="leaveChamber" type="button" hidden>退出缓冲舱并复位</button>
+          <button class="button" id="installSensor" type="button" hidden>安装门位传感器</button>
+          <button class="button primary" id="airlockWalkOut" type="button" data-close hidden>回到场景，沿绿灯撤离</button>
+        </div>
+        <details class="airlock-log" id="airlockLog" hidden>
+          <summary>旧门控操作日志</summary>
+          <ol>
+            <li>人员进舱时亮黄灯。此时切电，联锁拒绝。</li>
+            <li>人员进舱后等到绿灯再切电，外门打开。</li>
+          </ol>
+          <p>备用电源一次只供一道门。</p>
+        </details>
+      </section>
+      <div class="comms-workspace">
+        <div class="comms-history">
+          <div class="comms-evidence" data-evidence-host hidden></div>
+          <p id="echoPressure" class="device-hint" hidden></p>
+          <div class="conversation" id="conversation" role="log" aria-label="ECHO 对话记录" tabindex="0"></div>
+          <div class="echo-actions" id="echoActions" aria-label="可请求的设备动作" hidden></div>
+          <p class="chat-status" id="chatStatus" role="status" hidden></p>
+        </div>
+        <form id="chatForm" class="chat-form">
+          <label class="visually-hidden" for="chatInput">给 ECHO 的消息</label>
+          <textarea id="chatInput" placeholder="输入给 ECHO 的消息…" rows="1" maxlength="1000" required></textarea>
+          <button class="button primary" id="send" type="submit">发送</button>
+        </form>
+      </div>
+    </div>
   </dialog>
 
   <dialog class="panel ending-panel" id="endingDialog" aria-labelledby="endingTitle">
     <div class="panel-body">
-      <span class="ending-icon" aria-hidden="true">✓</span>
+      <span class="ending-icon" aria-hidden="true"></span>
       <h2 id="endingTitle">撤离完成</h2>
       <p id="endingReport">实验室已进入维护模式。</p>
+      <p id="endingEcho" hidden></p>
       <button class="button primary" id="playAgain" type="button" autofocus>再玩一次</button>
     </div>
   </dialog>

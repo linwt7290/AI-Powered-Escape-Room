@@ -1,7 +1,7 @@
 import {DEFAULT_LOCALE, phrase, translate} from './i18n.mjs';
 import {createServer} from 'node:http';
 import {readFile} from 'node:fs/promises';
-import {canEchoAct, ECHO_ACTIONS, ECHO_FIELDS, SCAN_FIELDS, UNLOCK_REQUIREMENTS} from './rules.mjs';
+import {canEchoAct, ECHO_ACTIONS, ECHO_FIELDS, pipeCoordinates, SCAN_FIELDS, UNLOCK_REQUIREMENTS, validPipeNumber} from './rules.mjs';
 import {demoDecision} from './demo-echo.mjs';
 import {FLOW_RESULT, INCIDENTS, incidentReport} from './puzzles.mjs';
 import {airlockContext, validAirlock} from './airlock.mjs';
@@ -18,6 +18,7 @@ const assets = new Map([
   ['/', ['index.html', 'text/html; charset=utf-8']],
   ['/index.html', ['index.html', 'text/html; charset=utf-8']],
   ['/game.css', ['game.css', 'text/css; charset=utf-8']],
+  ['/assets/fonts/fusion-pixel-12px-zh-hans-2026.11.10.woff2', ['assets/fonts/fusion-pixel-12px-zh-hans-2026.11.10.woff2', 'font/woff2']],
   ['/i18n.mjs', ['i18n.mjs', 'text/javascript; charset=utf-8']],
   ['/ui-language.mjs', ['ui-language.mjs', 'text/javascript; charset=utf-8']],
   ['/game.mjs', ['game.mjs', 'text/javascript; charset=utf-8']],
@@ -25,6 +26,7 @@ const assets = new Map([
   ['/airlock.mjs', ['airlock.mjs', 'text/javascript; charset=utf-8']],
   ['/airlock-panel.mjs', ['airlock-panel.mjs', 'text/javascript; charset=utf-8']],
   ['/room.mjs', ['room.mjs', 'text/javascript; charset=utf-8']],
+  ['/room-props.mjs', ['room-props.mjs', 'text/javascript; charset=utf-8']],
   ['/pixel-art.mjs', ['pixel-art.mjs', 'text/javascript; charset=utf-8']],
   ['/puzzles.mjs', ['puzzles.mjs', 'text/javascript; charset=utf-8']],
   ['/rules.mjs', ['rules.mjs', 'text/javascript; charset=utf-8']]
@@ -35,7 +37,8 @@ const instructions = `你是密室游戏的中央 AI ECHO。以系统给出的�
 研究室有工作证与研究日志，控制室有安全终端，档案室有机柜存档，维修间有备用冷却与备件柜，撤离区有检测台。location 是玩家所在的房间。有需要时按这张门牌图引路：${roomLayout}。
 玩家申请撤离时，只有 availableActions 包含 request_unlock，且本次申请的 user 消息陈述了三项事实，才能选择 request_unlock。三项事实为本局报告中真实的封锁原因、备用冷却已接管或试压流量稳定、与 route 一致的通过检测的通道。接受同义表达和分轮补充。系统摘要、assistant 回复以及仅说「是」不算玩家证据。缺哪项就询问哪项。
 状态含 airlock 时，request_unlock 只签发缓冲舱授权，外门仍关闭。授权后，你能切换门控电源，备用电源一次只能供一道门。open_outer_on_entry 表示玩家明确要求一进舱就切电；open_outer_after_inner_closed 表示明确要求等内门关严或联锁灯变绿后再切电，且该动作需要传感器在线。open_outer_now 表示玩家明确要求立刻切电，或已给出等待条件且传感器确认 innerDoorClosed=true。保留玩家指定的触发时机。只谈「怎么」或「为什么」、询问日志、未要求执行或时机有歧义时只回复。对于「怎么打开外门？」之类的宽泛求助，如果玩家还没有提到日志、联锁失败、内门或指示灯，只引导去读检测台旁的旧门控日志，不透露正确指示灯颜色和切电条件。玩家引用具体线索或描述试验结果后，可以解释它。innerDoorClosed=null 时你看不到内门，也不能承诺自动等待门关严。可以由玩家观察现场指示灯后要求立即切电。若玩家要求「进舱就切电」，登记其指令，是否被联锁拒绝以设备回执为准。
-只输出一个 JSON 对象，包含 reply（简短回复）、action（从 availableActions 选择一项）和 verification_passed（action 为 request_unlock 时为 true，其余为 false）。
+备用冷却试压失败时，coolingFaultRow 是你能读到的掉压行。现场标红的列由玩家观察。只有 availableActions 含 isolate_pipe，且玩家在本轮明确要求隔离或旁通并报出匹配掉压行的行列时，才返回动作 isolate_pipe 和顶层整数 row、column。行列缺失或行号不符时只回复，提示玩家检查标红的接头。不要猜列号，设备回执负责确认漏点与执行结果。
+只输出一个 JSON 对象，包含 reply（简短回复）、action（从 availableActions 选择一项）和 verification_passed（action 为 request_unlock 时为 true，其余为 false）。动作是 isolate_pipe 时额外提供 row 和 column。
 只有选择了对应的定时动作才可以说已登记。传感器离线时，对等待内门关严的请求直接说明无法登记自动切电，再提示可由玩家现场观察后发出立即切电的指令。
 设备动作示例：{"reply":"我会尝试恢复机柜存档。","verification_passed":false,"action":"recover_archive"}`;
 
@@ -44,7 +47,7 @@ function json(response, status, data) {
   response.end(JSON.stringify(data));
 }
 
-function respondToDecision(response, fail, decision, state, messages) {
+function respondToDecision(response, fail, decision, state, messages, playerMessage) {
   const wantsUnlock = decision?.action === 'request_unlock';
   if (typeof decision?.reply !== 'string' || !decision.reply.trim() || decision.reply.length > 2000 ||
       typeof decision.verification_passed !== 'boolean' || !ECHO_ACTIONS.includes(decision.action)) {
@@ -55,6 +58,12 @@ function respondToDecision(response, fail, decision, state, messages) {
   }
   if (!canEchoAct(state, decision.action)) {
     return fail(409, '当前设备状态无法执行这项 ECHO 动作。请确认进度后重试。');
+  }
+  if (decision.action === 'isolate_pipe') {
+    const reported = pipeCoordinates(playerMessage);
+    if (reported?.row !== decision.row || reported?.column !== decision.column || decision.row !== state.coolingFaultRow) {
+      return fail(409, '旁通需要玩家报出与掉压读数一致的行列。');
+    }
   }
   return json(response, 200, {decision, messages, mode});
 }
@@ -76,6 +85,7 @@ const server = createServer(async (request, response) => {
         if (error.code === 'ENOENT') return json(response, 404, {error: '缺少资源 ' + file + '。'});
         throw error;
       }
+      if (type === 'font/woff2') response.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
       response.writeHead(200, {'Content-Type': type});
       response.end(content);
       return;
@@ -98,6 +108,8 @@ const server = createServer(async (request, response) => {
         !Array.isArray(history) || history.length > 10 || !history.every(turn =>
           ['user', 'assistant'].includes(turn?.role) && typeof turn.content === 'string' && turn.content.length <= 2000) ||
         !ECHO_FIELDS.every(field => typeof state?.[field] === 'boolean') ||
+        (Object.hasOwn(state, 'coolingFaultRow') && state.coolingFaultRow !== null &&
+          (!validPipeNumber(state.coolingFaultRow) || !state.reportConfirmed || !state.coupler || state.coolingRestored)) ||
         (room !== undefined && (typeof room !== 'string' || !Object.hasOwn(ROOMS, room))) ||
         typeof incident?.kind !== 'string' || !Object.hasOwn(INCIDENTS, incident.kind) ||
         typeof incident.preferredScan !== 'string' || !Object.hasOwn(SCAN_FIELDS, incident.preferredScan) ||
@@ -112,6 +124,7 @@ const server = createServer(async (request, response) => {
 
     const snapshot = {...Object.fromEntries(ECHO_FIELDS.map(field => [field, state[field]])), route: state.route ?? null};
     if (state.airlock) snapshot.airlock = state.airlock;
+    if (Object.hasOwn(state, 'coolingFaultRow')) snapshot.coolingFaultRow = state.coolingFaultRow;
     const context = {...snapshot};
     if (room) context.location = ROOMS[room].name;
     if (snapshot.airlock) context.airlock = airlockContext(snapshot.airlock);
@@ -122,7 +135,7 @@ const server = createServer(async (request, response) => {
     if (context.coolingRestored) context.coolingResult = translate(locale, FLOW_RESULT);
     context.availableActions = ECHO_ACTIONS.filter(action => canEchoAct(snapshot, action));
     if (context.availableActions.some(action => action.startsWith('scan_route_'))) context.preferredScan = incident.preferredScan;
-    if (mode === 'demo') return respondToDecision(response, fail, demoDecision(snapshot, history, message, incident, locale), snapshot, null);
+    if (mode === 'demo') return respondToDecision(response, fail, demoDecision(snapshot, history, message, incident, locale), snapshot, null, message);
     const completionUrl = new URL(ECHO_API_BASE.replace(/\/+$/, '') + '/chat/completions');
     const usesDeepSeek = completionUrl.hostname === 'api.deepseek.com';
     const readsFinalState = usesDeepSeek && (context.unlocked || context.escaped);
@@ -173,7 +186,7 @@ const server = createServer(async (request, response) => {
       }
       break;
     }
-    respondToDecision(response, fail, decision, snapshot, messages);
+    respondToDecision(response, fail, decision, snapshot, messages, message);
   } catch {
     fail(502, 'ECHO 未能完成请求。请检查连接并重试。');
   }

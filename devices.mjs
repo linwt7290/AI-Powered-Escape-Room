@@ -1,10 +1,16 @@
 import {phrase} from './i18n.mjs';
 import {locale, localText, t} from './ui-language.mjs';
-import {alignNextPipe, FLOW_RESULT, GRID_SIZE, PRESSURE_LIMIT, PARTICLE_LIMIT, rotatePipe, safePassage, traceCircuit} from './puzzles.mjs';
+import {alignNextPipe, FLOW_RESULT, GRID_SIZE, pipeFault, PRESSURE_LIMIT, PARTICLE_LIMIT, rotatePipe, safePassage, traceCircuit} from './puzzles.mjs';
 import {canEchoAct, SCAN_FIELDS} from './rules.mjs';
 
 const byId = id => document.getElementById(id);
 const directions = ['北', '东', '南', '西'];
+
+export function describeRouteReadings({pressure, particles, interlock}) {
+  return phrase('压差 {pressure} · 颗粒指数 {particles} · {interlock}', {
+    pressure, particles, interlock: interlock ? '联锁响应' : '联锁无响应'
+  });
+}
 
 export function createDevices(getState, feedback, render) {
   const grid = byId('pipeGrid');
@@ -17,8 +23,7 @@ export function createDevices(getState, feedback, render) {
   let incident;
   let tiles;
   let trial;
-  let adjusted;
-  let calibration;
+  const bypasses = new Map();
   let buttons;
 
   function notice(id, message = '', error = false) {
@@ -41,12 +46,12 @@ export function createDevices(getState, feedback, render) {
         button.append(arm);
         openings.push(t(direction));
       }
-      button.dataset.power = trial?.leak === index ? 'leak' : trial?.energized.includes(index) ? 'flow'
-        : adjusted === index ? 'adjusted' : 'idle';
+      button.dataset.power = trial?.fault === index ? 'leak' : trial?.energized.includes(index) ? 'flow'
+        : bypasses.has(index) ? 'adjusted' : 'idle';
       const row = Math.floor(index / GRID_SIZE) + 1;
       const column = index % GRID_SIZE + 1;
       button.setAttribute('aria-label', t(phrase('第 {row} 行第 {column} 列，接口朝{directions}', {row, column, directions: openings.join(locale() === 'en' ? ', ' : '、')})));
-      button.disabled = getState().coolingRestored;
+      button.disabled = getState().coolingRestored || bypasses.has(index);
     });
     test.disabled = restart.disabled = getState().coolingRestored;
   }
@@ -54,8 +59,7 @@ export function createDevices(getState, feedback, render) {
   function restoreTiles() {
     tiles = [...incident.tiles];
     trial = undefined;
-    adjusted = calibration?.index;
-    if (calibration) tiles[calibration.index] = calibration.ports;
+    for (const [index, ports] of bypasses) tiles[index] = ports;
     notice('coolingNotice');
     renderPipes();
   }
@@ -85,41 +89,45 @@ export function createDevices(getState, feedback, render) {
       : !state.reportConfirmed ? '设备停机。先在安全终端查阅事故报告。'
         : !state.coupler ? '耦合器缺失。到维修柜取件后返回这里。'
           : '耦合器已装入。旋转管段，让左上入口与右下出口连通，再执行试压。');
-    byId('askAlignment').hidden = !canEchoAct(state, 'align_pipe');
+    byId('askAlignment').hidden = !canEchoAct(state, 'isolate_pipe');
+    localText(byId('pressureReading'), state.coolingFaultRow
+      ? phrase('ECHO 检测到第 {row} 行掉压。', {row: state.coolingFaultRow}) : '执行一次试压以获取读数。');
+    byId('pressureReading').hidden = state.coolingRestored;
     byId('askScan').hidden = !state.coolingRestored || state.passageSafe || (state.scannedA && state.scannedB);
     routeForm.hidden = !state.coolingRestored;
     localText(byId('passageInstructions'), state.coolingRestored
-      ? phrase('选择同时符合三项标准的通道。压差 ≤ {pressure}，颗粒指数 ≤ {particles}，门锁联锁必须响应。', {pressure: PRESSURE_LIMIT, particles: PARTICLE_LIMIT})
+      ? phrase('选择同时符合三项标准的通道。压差不高于 {pressure}，颗粒指数不高于 {particles}，门锁联锁必须响应。', {pressure: PRESSURE_LIMIT, particles: PARTICLE_LIMIT})
       : '检测台等待稳定冷却。恢复后，请 ECHO 扫描并上传通道读数。');
     for (const radio of routeOptions.querySelectorAll('input')) {
       const scanned = state[SCAN_FIELDS[radio.value]];
       radio.disabled = !scanned || state.passageSafe;
       const readings = incident.routes[radio.value];
-      localText(radio.parentElement.querySelector('[data-reading]'), scanned
-        ? phrase('压差 {pressure} · 颗粒指数 {particles} · {interlock}', {
-          pressure: readings.pressure, particles: readings.particles,
-          interlock: readings.interlock ? '联锁响应' : '联锁无响应'
-        }) : '等待 ECHO 扫描');
+      localText(radio.parentElement.querySelector('[data-reading]'), scanned ? describeRouteReadings(readings) : '等待 ECHO 扫描');
     }
     submit.disabled = state.passageSafe || !new FormData(routeForm).get('route');
   }
 
-  restart.addEventListener('click', restoreTiles);
+  restart.addEventListener('click', () => {
+    getState().coolingFaultRow = null;
+    restoreTiles();
+    render();
+  });
   test.addEventListener('click', () => {
     const state = getState();
     if (!state.reportConfirmed || !state.coupler || state.coolingRestored) return;
     trial = traceCircuit(tiles);
+    state.coolingFaultRow = null;
     if (trial.connected) {
       state.coolingRestored = true;
       notice('coolingNotice', FLOW_RESULT);
       feedback('备用冷却已恢复。到出口检测台核对通道读数。');
-      render();
     } else {
-      const row = Math.floor(trial.leak / GRID_SIZE) + 1;
-      const column = trial.leak % GRID_SIZE + 1;
-      notice('coolingNotice', phrase('试压未通过。检查第 {row} 行第 {column} 列附近的管段接口。', {row, column}), true);
+      trial.fault = pipeFault(tiles);
+      state.coolingFaultRow = Math.floor(trial.fault / GRID_SIZE) + 1;
+      notice('coolingNotice', '试压未通过。检查标红的接头。可以手动旋转，也可以把行列报给 ECHO，请它旁通漏点。', true);
     }
     renderPipes();
+    render();
   });
 
   routeForm.addEventListener('change', () => {
@@ -146,11 +154,25 @@ export function createDevices(getState, feedback, render) {
   return {
     render: renderDevices,
     refreshLanguage: renderPipes,
+    isolate(row, column) {
+      const index = (row - 1) * GRID_SIZE + column - 1;
+      if (!canEchoAct(getState(), 'isolate_pipe') || trial?.fault !== index) {
+        return '该接头和现场漏点不符。请核对标红的行列后重试。';
+      }
+      alignNextPipe(tiles);
+      bypasses.set(index, tiles[index]);
+      getState().coolingFaultRow = null;
+      trial = undefined;
+      const result = phrase('已旁通第 {row} 行第 {column} 列的接头。请重新试压。', {row, column});
+      notice('coolingNotice', result);
+      renderPipes();
+      return result;
+    },
     align() {
       if (traceCircuit(tiles).connected) return '当前回路已连通，可以直接试压。';
-      adjusted = alignNextPipe(tiles);
+      const adjusted = alignNextPipe(tiles);
       if (adjusted === null) return '管路已对齐，可以执行试压。';
-      calibration = {index: adjusted, ports: tiles[adjusted]};
+      bypasses.set(adjusted, tiles[adjusted]);
       getState().alignedPipe = true;
       trial = undefined;
       const result = phrase('ECHO 已校准第 {row} 行第 {column} 列。其余管段由你查验。', {
@@ -162,7 +184,7 @@ export function createDevices(getState, feedback, render) {
     },
     reset(nextIncident) {
       incident = nextIncident;
-      calibration = undefined;
+      bypasses.clear();
       buttons = incident.tiles.map((_, index) => {
         const button = document.createElement('button');
         button.className = 'pipe-tile';
@@ -170,9 +192,11 @@ export function createDevices(getState, feedback, render) {
         button.addEventListener('click', () => {
           tiles[index] = rotatePipe(tiles[index]);
           trial = undefined;
-          if (adjusted === index) adjusted = undefined;
+          const needsRender = getState().coolingFaultRow !== null;
+          getState().coolingFaultRow = null;
           notice('coolingNotice');
           renderPipes();
+          if (needsRender) render();
         });
         return button;
       });

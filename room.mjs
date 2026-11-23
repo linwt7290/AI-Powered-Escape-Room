@@ -47,15 +47,48 @@ export const DOORS = {
 };
 export const DOOR_HALF_WIDTH = 26;
 
-export const OBJECTS = {
-  card: {room: 'research', x: 108, y: 153, anchor: 113, label: '拾取工作证'},
-  journal: {room: 'research', x: 153, y: 153, anchor: 112, label: '阅读研究日志'},
-  rack: {room: 'archive', x: 87, y: 77, anchor: 29, label: '读取机柜存档'},
-  locker: {room: 'maintenance', x: 127, y: 190, anchor: 164, label: '检查维修柜'},
-  terminal: {room: 'control', x: 333, y: 120, anchor: 75, label: '操作安全终端'},
-  cooling: {room: 'maintenance', x: 365, y: 145, anchor: 93, label: '检修冷却回路'},
-  exit: {room: 'exit', x: 400, y: 74, anchor: 40, label: '检查出口检测台'}
+export const ROOM_PROPS = {
+  microscope: {room: 'research', x: 326, y: 128, anchor: 88, frame: [314, 99, 25, 18], label: '观察显微镜', title: '显微镜'},
+  intercom: {room: 'control', x: 106, y: 119, anchor: 83, frame: [95, 91, 22, 17], label: '试用广播台', title: '广播台'},
+  photo: {room: 'archive', x: 349, y: 131, anchor: 74, frame: [335, 101, 29, 20], label: '查看合影', title: '研究组合影'},
+  coffee: {room: 'duty', x: 123, y: 143, anchor: 100, frame: [111, 113, 27, 20], label: '使用咖啡机', title: '咖啡机'},
+  lights: {room: 'service', x: 358, y: 139, anchor: 93, frame: [345, 111, 26, 16], label: '操作走廊灯', title: '照明面板'}
 };
+export const PROP_BY_ROOM = Object.fromEntries(Object.entries(ROOM_PROPS).map(([id, prop]) => [prop.room, id]));
+
+export const OBJECTS = {
+  card: {room: 'research', x: 108, y: 153, anchor: 113, frame: [103, 121, 13, 9], label: '拾取工作证'},
+  journal: {room: 'research', x: 153, y: 153, anchor: 112, frame: [143, 116, 20, 16], label: '阅读研究日志'},
+  rack: {room: 'archive', x: 87, y: 77, anchor: 29, frame: [67, 30, 36, 46], label: '读取机柜存档'},
+  locker: {room: 'maintenance', x: 127, y: 190, anchor: 164, frame: [93, 167, 34, 47], label: '检查维修柜'},
+  terminal: {room: 'control', x: 333, y: 120, anchor: 75, frame: [309, 82, 49, 37], label: '操作安全终端'},
+  cooling: {room: 'maintenance', x: 365, y: 145, anchor: 93, frame: [329, 96, 72, 47], label: '检修冷却回路'},
+  exit: {room: 'exit', x: 400, y: 74, anchor: 40, frame: [369, 27, 62, 44], label: '检查出口检测台'},
+  ...ROOM_PROPS
+};
+
+export const OBJECT_KEYS_BY_ROOM = Object.fromEntries(Object.keys(ROOMS).map(room => [room,
+  Object.keys(OBJECTS).filter(key => OBJECTS[key].room === room)
+]));
+
+export function canInspectObject(key, state) {
+  return !state.escaped && !(key === 'card' && state.card) && !(key === 'exit' && state.unlocked);
+}
+
+export function nextDoor(from, to) {
+  if (from === to) return;
+  const visited = new Set([from]);
+  const queue = [{room: from, firstDoor: undefined}];
+  for (const {room, firstDoor} of queue) {
+    for (const [door, neighbor] of Object.entries(ROOMS[room].doors)) {
+      if (visited.has(neighbor)) continue;
+      const exit = firstDoor ?? door;
+      if (neighbor === to) return exit;
+      visited.add(neighbor);
+      queue.push({room: neighbor, firstDoor: exit});
+    }
+  }
+}
 
 function clearPath(room, x, y, route) {
   const lane = room === 'exit' ? PASSAGE_LANES[route] : null;
@@ -83,9 +116,9 @@ export function move(player, dx, dy, route) {
 export function nearbyObject(player, state) {
   let nearest;
   let best = 28;
-  for (const [key, object] of Object.entries(OBJECTS)) {
-    if (object.room !== player.room) continue;
-    if ((key === 'card' && state.card) || (key === 'exit' && state.unlocked)) continue;
+  for (const key of OBJECT_KEYS_BY_ROOM[player.room] ?? []) {
+    if (!canInspectObject(key, state)) continue;
+    const object = OBJECTS[key];
     const distance = Math.hypot(player.x - object.x, player.y - object.y);
     if (distance < best) {
       best = distance;

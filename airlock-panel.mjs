@@ -1,4 +1,3 @@
-import {phrase} from './i18n.mjs';
 import {locale, localText} from './ui-language.mjs';
 import {AIRLOCK_ACTIONS, enterChamber, finishClosing, leaveChamber} from './airlock.mjs';
 
@@ -23,9 +22,13 @@ export function createAirlockPanel(getState, publish) {
     const state = getState();
     const {authorized, phase, spare, sensor, schedule} = state.airlock;
     byId('passageCheck').hidden = authorized;
-    byId('airlockPanel').hidden = !authorized;
-    byId('airlockLog').hidden = !state.passageSafe;
-    localText(byId('passageTitle'), authorized ? phrase('撤离缓冲舱 · {route} 通道', {route: state.route}) : '出口通道检测台');
+    byId('airlockPanel').hidden = !authorized || byId('echoDialog').dataset.console !== 'airlock';
+    byId('airlockLog').hidden = !authorized;
+    const innerClosed = phase === 'closed' || phase === 'open';
+    byId('innerDoor').dataset.state = innerClosed ? 'closed' : phase;
+    byId('outerDoor').dataset.state = phase === 'open' ? 'open' : 'locked';
+    localText(byId('innerDoorState'), innerClosed ? '已关严' : phase === 'closing' ? '关闭中' : phase === 'rejected' ? '未关严' : '待进入');
+    localText(byId('outerDoorState'), phase === 'open' ? '已打开' : '锁定');
     localText(byId('airlockSensor'), sensor
       ? '门位传感器在线。ECHO 能读取内门状态。'
       : '门位传感器离线。现场联锁灯仍可观察，备件可在维修柜取得。');
@@ -34,11 +37,10 @@ export function createAirlockPanel(getState, publish) {
     localText(doorStatus, doorLabels[phase]);
     const scheduleStatus = byId('airlockSchedule');
     scheduleStatus.hidden = !schedule;
-    localText(scheduleStatus, schedule === AIRLOCK_ACTIONS.onEntry ? 'ECHO 将在进舱时切电。' : 'ECHO 将在内门关严后切电。');
+    localText(scheduleStatus, schedule === AIRLOCK_ACTIONS.onEntry ? '已登记。进舱时切电。' : '已登记。等待内门关严。');
     byId('enterChamber').hidden = phase !== 'outside';
     byId('leaveChamber').hidden = phase === 'outside' || phase === 'open';
     byId('installSensor').hidden = !spare || sensor || phase !== 'outside';
-    byId('askAirlock').hidden = phase === 'open';
     byId('airlockWalkOut').hidden = phase !== 'open';
     sparesForm.hidden = spare;
   }

@@ -1,4 +1,4 @@
-import {DOORS, DOOR_HALF_WIDTH, EXIT, HEIGHT, OBJECTS, PASSAGE_LANES, ROOMS, WIDTH} from './room.mjs';
+import {canInspectObject, DOORS, DOOR_HALF_WIDTH, EXIT, HEIGHT, OBJECT_KEYS_BY_ROOM, OBJECTS, PASSAGE_LANES, PROP_BY_ROOM, ROOM_PROPS, ROOMS, WIDTH} from './room.mjs';
 
 const FRONT = [
   '....HHHHHH......', '..HHhhhhhhHH....', '..HhhhhhHHhH....', '.HHhHHHHHhhHH...',
@@ -35,6 +35,16 @@ function panel(ctx, x, y, width, height, fill = '#233640', edge = '#46606a') {
   rect(ctx, '#0b151e', x + 2, y + 3, width, height);
   rect(ctx, edge, x, y, width, height);
   rect(ctx, fill, x + 1, y + 1, width - 2, height - 3);
+}
+
+function paintPlant(ctx, x, y) {
+  rect(ctx, '#151f27', x - 6, y + 4, 15, 2);
+  rect(ctx, '#a36f59', x - 5, y - 1, 11, 3);
+  rect(ctx, '#704b45', x - 4, y + 2, 9, 3);
+  rect(ctx, '#3f7e67', x, y - 11, 2, 10);
+  rect(ctx, '#6ba68a', x - 5, y - 10, 5, 3);
+  rect(ctx, '#82bb93', x + 2, y - 13, 4, 4);
+  rect(ctx, '#558d76', x + 2, y - 6, 5, 3);
 }
 
 function lightTexture(paint) {
@@ -144,6 +154,12 @@ function paintStructure(ctx, room) {
 }
 
 function paintArchive(ctx) {
+  // 线槽嵌在地面，颜色比设备状态灯暗。
+  rect(ctx, '#1b2a37', 114, 79, 89, 6);
+  rect(ctx, '#1b2a37', 198, 79, 5, 112);
+  rect(ctx, '#576077', 115, 81, 85, 1);
+  rect(ctx, '#576077', 200, 81, 1, 109);
+  for (const y of [91, 115, 139, 163, 187]) rect(ctx, '#656981', 197, y, 7, 2);
   for (const [x, hue] of [[29, '#77c4c0'], [68, '#58c1c9'], [107, '#7fbd9c']]) {
     panel(ctx, x, 31, 34, 44, '#243943');
     rect(ctx, '#111f2a', x + 4, 37, 26, 30);
@@ -162,13 +178,21 @@ function paintArchive(ctx) {
       rect(ctx, '#84739e', column + 4, y + height - 13, 2, 2);
     }
   }
+  panel(ctx, 280, 33, 38, 22, '#232f46', '#65708b');
+  for (const [x, ink] of [[286, '#a891bd'], [295, '#89adbf'], [304, '#d1b486']]) {
+    rect(ctx, '#171e30', x, 38, 7, 12);
+    rect(ctx, ink, x + 2, 40, 3, 1);
+    rect(ctx, '#414b5e', x + 2, 46, 3, 2);
+  }
 }
 
 function paintControl(ctx) {
   panel(ctx, 164, 34, 46, 23, '#192e39');
-  rect(ctx, '#42666c', 170, 39, 33, 2);
-  rect(ctx, '#28454e', 170, 45, 33, 2);
-  rect(ctx, '#28454e', 170, 50, 20, 2);
+  rect(ctx, '#132732', 168, 38, 38, 15);
+  rect(ctx, '#294651', 171, 45, 32, 1);
+  rect(ctx, '#294651', 171, 50, 32, 1);
+  for (const x of [174, 181, 188, 195, 202]) rect(ctx, '#294651', x, 40, 1, 11);
+  rect(ctx, '#73a79d', 168, 32, 9, 2);
   ctx.save();
   ctx.translate(OBJECTS.terminal.x - 248, 0);
   panel(ctx, 219, 33, 59, 25, '#14282e', '#3e615f');
@@ -195,6 +219,11 @@ function paintControl(ctx) {
     for (let row = 0; row < 3; row++) rect(ctx, '#4d9692', x + 3, 92 + 3 * row, 8 + 2 * row, 1);
     rect(ctx, '#83c0a5', x + 3, 108, 4, 1);
   }
+  for (const x of [57, 155]) {
+    rect(ctx, '#172e38', x, 117, 6, 23);
+    rect(ctx, '#3e646a', x + 2, 116, 2, 22);
+    rect(ctx, '#54757a', x - 1, 126, 8, 2);
+  }
 
   ctx.save();
   ctx.translate(OBJECTS.terminal.x - 248, 0);
@@ -218,6 +247,11 @@ function paintExit(ctx) {
     rect(ctx, '#a58a63', x + 4, 89, 1, 3);
   }
   rect(ctx, '#b78b59', 180, 111, 76, 2);
+  // 低对比度地面引导带连接等候区和外门前的检测区。
+  rect(ctx, '#2e5358', 242, 179, 140, 4);
+  rect(ctx, '#2e5358', 379, 120, 4, 59);
+  for (const x of [252, 274, 296, 318, 340, 362]) rect(ctx, '#607c78', x, 180, 8, 1);
+  for (const y of [130, 144, 158, 172]) rect(ctx, '#607c78', 380, y, 1, 5);
   // 地面疏散线和门框。门扇独立绘制。
   rect(ctx, '#202d36', 355, 69, 89, 54);
   rect(ctx, '#36474d', 359, 72, 81, 44);
@@ -243,6 +277,16 @@ function paintExit(ctx) {
 }
 
 function paintResearch(ctx) {
+  panel(ctx, 270, 33, 103, 33, '#213b46', '#62808b');
+  rect(ctx, '#315560', 274, 37, 95, 24);
+  rect(ctx, '#203d4a', 274, 51, 95, 10);
+  rect(ctx, '#a1d4c12d', 277, 38, 88, 2);
+  rect(ctx, '#658693', 319, 35, 3, 26);
+  for (const [x, color] of [[282, '#b5be87'], [300, '#82b6b2'], [341, '#bc967b'], [355, '#7ba8b3']]) {
+    rect(ctx, '#233540', x, 56, 9, 2);
+    rect(ctx, color, x + 2, 45, 5, 11);
+    rect(ctx, '#dae3d0', x + 3, 43, 3, 2);
+  }
   panel(ctx, 269, 90, 114, 33, '#3c5057', '#768384');
   rect(ctx, '#263b46', 274, 95, 104, 17);
   for (const [x, fill] of [[281, '#687b83'], [306, '#7f9c99'], [331, '#b58e6c'], [356, '#617e86']]) {
@@ -278,9 +322,25 @@ function paintResearch(ctx) {
   rect(ctx, '#fbe2a6', 86, 109, 9, 2);
   rect(ctx, '#f3c27538', 83, 112, 17, 5);
   rect(ctx, '#f3c27522', 81, 117, 25, 10);
+  paintPlant(ctx, 171, 123);
 }
 
 function paintMaintenance(ctx) {
+  panel(ctx, 97, 38, 77, 28, '#233542', '#59666a');
+  for (const x of [103, 111, 119, 127, 135, 143, 151, 159, 167]) {
+    rect(ctx, '#455862', x, 45, 1, 1);
+    rect(ctx, '#455862', x, 54, 1, 1);
+  }
+  rect(ctx, '#ac8161', 112, 48, 21, 2);
+  rect(ctx, '#93a3a2', 130, 45, 5, 8);
+  rect(ctx, '#789396', 151, 45, 3, 13);
+  rect(ctx, '#c1a17c', 148, 43, 9, 3);
+  panel(ctx, 407, 32, 30, 27, '#213540', '#667e83');
+  rect(ctx, '#13242e', 412, 36, 19, 18);
+  for (const y of [36, 53]) {
+    rect(ctx, '#779093', 409, y, 2, 1);
+    rect(ctx, '#779093', 433, y, 2, 1);
+  }
   panel(ctx, 94, 89, 91, 32, '#414747', '#737866');
   rect(ctx, '#252f34', 100, 95, 79, 19);
   for (const x of [106, 123, 142, 158]) {
@@ -307,6 +367,8 @@ function paintMaintenance(ctx) {
   for (let x = 339; x <= 383; x += 4) rect(ctx, '#526b70', x, 179, 2, 4);
   rect(ctx, '#81c9b0', 390, 178, 3, 2);
   ctx.restore();
+  rect(ctx, '#253538', 330, 145, 70, 4);
+  for (let x = 332; x < 396; x += 8) rect(ctx, '#937956', x, 146, 4, 2);
 
   ctx.save();
   ctx.translate(OBJECTS.locker.x - 57, 0);
@@ -337,10 +399,26 @@ function paintDuty(ctx) {
     rect(ctx, '#83919b', x + 12, 202, 4, 2);
   }
   panel(ctx, 49, 32, 111, 20, '#3f373f', '#7f6b73');
-  for (const x of [55, 76, 100, 121]) rect(ctx, '#b09c83', x, 36, 14, 11);
+  for (const [x, y, paper] of [[55, 35, '#d6c29e'], [76, 38, '#a0b8b3'], [100, 35, '#c9a78d'], [121, 37, '#d0bfa5']]) {
+    rect(ctx, paper, x, y, 14, 11);
+    rect(ctx, '#735a55', x + 6, y, 2, 2);
+    rect(ctx, '#6f77776b', x + 3, y + 4, 8, 1);
+    rect(ctx, '#6f77776b', x + 3, y + 7, 5, 1);
+  }
+  paintPlant(ctx, 89, 116);
+  rect(ctx, '#4b4d5f', 176, 181, 91, 32);
+  rect(ctx, '#564e64', 179, 184, 85, 26);
+  for (const y of [189, 204]) rect(ctx, '#747185', 186, y, 71, 1);
+  for (const x of [186, 256]) rect(ctx, '#747185', x, 189, 1, 16);
 }
 
 function paintService(ctx) {
+  for (const y of [36, 46]) {
+    rect(ctx, '#142830', 277, y + 3, 164, 6);
+    rect(ctx, '#576e70', 278, y, 160, 5);
+    rect(ctx, '#718789', 281, y, 155, 1);
+    for (const x of [297, 340, 383, 428]) rect(ctx, '#8d8c75', x, y - 1, 4, 7);
+  }
   panel(ctx, 302, 96, 110, 34, '#3d5453', '#75847a');
   rect(ctx, '#182c2e', 308, 101, 97, 22);
   for (const y of [105, 111, 117]) {
@@ -452,6 +530,139 @@ function drawPlayer(ctx, player, time) {
   }
 }
 
+export function drawTitleScene(canvas) {
+  const ctx = canvas.getContext('2d', {alpha: false});
+  paintStructure(ctx, 'exit');
+  paintExit(ctx);
+  drawDoor(ctx, 0, null);
+  ctx.save();
+  ctx.globalCompositeOperation = 'screen';
+  glow(ctx, 399, 34, 92, 62, '228,72,58', .64);
+  glow(ctx, 397, 120, 80, 80, '84,140,154', .34);
+  ctx.restore();
+  drawPlayer(ctx, {x: 377, y: 171, facing: 'up', moving: false}, 0);
+}
+
+function drawRoomProp(ctx, prop, x, y, active, time = 0) {
+  ctx.save();
+  ctx.translate(x, y);
+  switch (prop) {
+    case 'microscope': {
+      const light = active ? '#c599ff' : '#e6f6ed';
+      rect(ctx, '#142630', -11, 4, 23, 4);
+      rect(ctx, '#7eabb0', -8, -6, 4, 10);
+      rect(ctx, '#b0c6cb', -9, -8, 13, 4);
+      rect(ctx, '#384e5d', 1, -5, 4, 5);
+      rect(ctx, light, 0, 1, 6, 2);
+      rect(ctx, active ? '#7e5bbc' : '#8ac7bb', -3, 3, 11, 1);
+      break;
+    }
+    case 'intercom':
+      panel(ctx, -10, -7, 20, 13, '#1b3742', '#587484');
+      for (const row of [-4, -1, 2]) rect(ctx, '#648899', -7, row, 9, 1);
+      rect(ctx, active ? '#9ae5b7' : '#b7855a', 5, -4, 2, 2);
+      break;
+    case 'photo':
+      panel(ctx, -13, -9, 26, 18, '#597483', '#b79f7f');
+      rect(ctx, '#759d9a', -11, -7, 22, 12);
+      for (const [offset, skin, jacket] of [[-7, '#c48c72', '#e0d7bb'], [0, '#edc1a1', '#53638a'], [7, '#a87364', '#e0d7bb']]) {
+        rect(ctx, '#263043', offset - 2, -5, 4, 3);
+        rect(ctx, skin, offset - 1, -3, 3, 3);
+        rect(ctx, jacket, offset - 2, 0, 5, 5);
+      }
+      rect(ctx, '#d4bf9a', -11, 6, 22, 1);
+      break;
+    case 'coffee':
+      panel(ctx, -11, -9, 14, 17, '#293b44', '#8c9291');
+      rect(ctx, '#546a71', -7, -5, 7, 2);
+      rect(ctx, '#ad8158', -7, 0, 4, 5);
+      rect(ctx, '#dccbbe', 6, 0, 6, 6);
+      rect(ctx, '#a9a2a0', 12, 2, 2, 2);
+      if (active) {
+        rect(ctx, '#815037', 6, 0, 6, 2);
+        const rise = Math.floor(time / 135) % 8;
+        rect(ctx, '#d4ccb7', 8, -4 - rise, 2, 2);
+        rect(ctx, '#9fa8a1', 10, -7 - (rise + 3) % 8, 1, 2);
+      }
+      break;
+    case 'lights':
+      panel(ctx, -12, -7, 24, 14, '#25373d', '#78867d');
+      rect(ctx, '#14252c', -9, -4, 18, 8);
+      rect(ctx, active ? '#e9ad69' : '#63958e', -7, -2, 5, 4);
+      rect(ctx, active ? '#9b815f' : '#a3efdd', 2, -2, 5, 4);
+      break;
+  }
+  ctx.restore();
+}
+
+export function drawPropPreview(canvas, prop, active) {
+  const ctx = canvas.getContext('2d');
+  rect(ctx, '#16242f', 0, 0, canvas.width, canvas.height);
+  rect(ctx, '#273b46', 0, 38, canvas.width, 1);
+  ctx.save();
+  ctx.scale(2, 2);
+  drawRoomProp(ctx, prop, 24, 12, active);
+  ctx.restore();
+}
+
+const fanFrames = [
+  [[-2, -7, 4, 5], [2, -2, 5, 4], [-2, 2, 4, 5], [-7, -2, 5, 4]],
+  [[2, -7, 4, 4], [3, 2, 4, 4], [-6, 3, 4, 4], [-7, -6, 4, 4]],
+  [[0, -7, 4, 5], [2, 0, 5, 4], [-4, 2, 4, 5], [-7, -4, 5, 4]],
+  [[3, -6, 4, 4], [2, 3, 4, 4], [-7, 2, 4, 4], [-6, -7, 4, 4]]
+];
+
+const signalHeights = [1, 2, 4, 6, 3, 1, 2, 1, 5, 8, 4, 2, 1, 3, 5, 2];
+const deskDust = [[88, 87], [97, 83], [112, 89], [66, 108], [119, 102], [92, 105]];
+
+function paintRoomMotion(ctx, room, time, warmLighting, unlocked) {
+  switch (room) {
+    case 'research': {
+      for (const [index, [x, y]] of deskDust.entries()) {
+        const drift = Math.floor(time / (index % 2 ? 310 : 235));
+        rect(ctx, '#e5c29465', x + (drift + index) % 12, y + (drift + index * 2) % 9, 1, 1);
+      }
+      break;
+    }
+    case 'control': {
+      const offset = Math.floor(time / 170);
+      for (let column = 0; column < signalHeights.length; column++) {
+        const height = signalHeights[(column + offset) % signalHeights.length];
+        rect(ctx, '#77b7ad', 171 + column * 2, 50 - height, 1, height);
+      }
+      break;
+    }
+    case 'archive': {
+      const step = Math.floor(time / 270) % 5;
+      for (const x of [29, 68, 107]) rect(ctx, '#9bc3c5', x + 23, 39 + step * 5, 2, 1);
+      break;
+    }
+    case 'maintenance': {
+      const blades = fanFrames[Math.floor(time / 150) % fanFrames.length];
+      for (const [x, y, width, height] of blades) rect(ctx, '#5d7880', 421 + x, 45 + y, width, height);
+      rect(ctx, '#a0b2b4', 419, 43, 5, 5);
+      rect(ctx, '#465d68', 421, 44, 2, 2);
+      break;
+    }
+    case 'service': {
+      const signal = warmLighting ? '#d9a274' : '#89c8b1';
+      const offset = Math.floor(time / 145) * 4;
+      for (const [index, y] of [105, 111, 117].entries()) {
+        const x = 313 + (offset + index * 29) % 83;
+        rect(ctx, signal, x, y, 4, 1);
+      }
+      break;
+    }
+    case 'exit': {
+      const step = Math.floor(time / 230) % 9;
+      const indicator = unlocked ? '#80bb9f' : '#a89776';
+      if (step < 6) rect(ctx, indicator, 252 + step * 22, 180, 6, 1);
+      else rect(ctx, indicator, 380, 172 - (step - 6) * 14, 1, 5);
+      break;
+    }
+  }
+}
+
 export function createPainter(canvas) {
   const ctx = canvas.getContext('2d', {alpha: false});
   ctx.imageSmoothingEnabled = false;
@@ -488,14 +699,20 @@ export function createPainter(canvas) {
     glow(lighting, 399, 21, 57, 41, '246,87,76', .48);
     glow(lighting, 400, 75, 47, 54, '211,68,65', .32);
   });
+  const warmServiceLight = lightTexture(lighting => glow(lighting, 342, 123, 145, 84, '255,161,77', .52));
   const exitLights = Object.fromEntries(Object.entries(PASSAGE_LANES).map(([name, lane]) => [name, lightTexture(lighting => {
     glow(lighting, lane.center, 42, 38, 52, '71,233,157', .4);
     glow(lighting, lane.center, 92, 34, 55, '78,234,163', .43);
   })]));
 
-  return (state, player, opening, pending, time) => {
+  return (state, player, opening, pending, time, props) => {
     const {room} = player;
     ctx.drawImage(backdrops[room], 0, 0);
+    const prop = PROP_BY_ROOM[room];
+    if (prop) {
+      const {x, y} = ROOM_PROPS[prop];
+      drawRoomProp(ctx, prop, x, y - 20, props[prop], time);
+    }
     if (room === 'exit') drawDoor(ctx, opening, state.unlocked ? state.route : null);
     if (room === 'research' && !state.card) {
       rect(ctx, '#7e634c', 104, 123, 10, 7);
@@ -506,12 +723,13 @@ export function createPainter(canvas) {
     ctx.drawImage(ambient, 0, 0, WIDTH, HEIGHT);
     ctx.save();
     ctx.globalCompositeOperation = 'screen';
-    ctx.drawImage(roomLights[room], 0, 0, WIDTH, HEIGHT);
+    ctx.drawImage(room === 'service' && props.lights ? warmServiceLight : roomLights[room], 0, 0, WIDTH, HEIGHT);
     if (room === 'exit') {
       ctx.globalAlpha = state.unlocked ? .42 + opening * .58 : .89 + .11 * Math.cos(time / 530);
       ctx.drawImage(state.unlocked ? exitLights[state.route] : alarmLight, 0, 0, WIDTH, HEIGHT);
     }
     ctx.restore();
+    paintRoomMotion(ctx, room, time, props.lights, state.unlocked);
 
     if (room === 'archive' && state.rack) {
       rect(ctx, state.archiveRecovered ? '#9fedb9' : '#e0ab72', 89, 41, 3, 2);
@@ -531,6 +749,29 @@ export function createPainter(canvas) {
       rect(ctx, state.scannedA ? sensorLight : '#7e746b', 446, 55, 3, 2);
       rect(ctx, state.scannedB ? sensorLight : '#7e746b', 451, 55, 3, 2);
     }
+    drawInteractionFrames(ctx, state, player, time);
     drawPlayer(ctx, player, time);
   };
+}
+
+function drawInteractionFrames(ctx, state, player, time) {
+  const pulse = .51 + .06 * Math.cos(time * 2 * Math.PI / 3200);
+  ctx.save();
+  ctx.fillStyle = '#f2f5ed';
+  for (const key of OBJECT_KEYS_BY_ROOM[player.room]) {
+    if (!canInspectObject(key, state)) continue;
+    const object = OBJECTS[key];
+    const distance = Math.hypot(player.x - object.x, player.y - object.y);
+    if (distance >= 60) continue;
+
+    const proximity = Math.min(1, (60 - distance) / 38);
+    ctx.globalAlpha = pulse * proximity * proximity * (3 - 2 * proximity);
+    const [x, y, width, height] = object.frame;
+    const arm = Math.min(6, Math.floor(Math.min(width, height) / 3));
+    ctx.fillRect(x, y, arm, 1);
+    ctx.fillRect(x, y + 1, 1, arm - 1);
+    ctx.fillRect(x + width - arm, y + height - 1, arm, 1);
+    ctx.fillRect(x + width - 1, y + height - arm, 1, arm - 1);
+  }
+  ctx.restore();
 }

@@ -1,4 +1,4 @@
-import {canEchoAct, SCAN_ACTIONS, SCAN_FIELDS} from './rules.mjs';
+import {canEchoAct, pipeCoordinates, SCAN_ACTIONS, SCAN_FIELDS} from './rules.mjs';
 import {INCIDENTS} from './puzzles.mjs';
 import {AIRLOCK_ACTIONS} from './airlock.mjs';
 import {DEFAULT_LOCALE, phrase, translate} from './i18n.mjs';
@@ -54,6 +54,13 @@ export function demoDecision(state, history, message, incident, locale = DEFAULT
   if (!state.password) return reply('把日志和机柜存档里的关系合起来，排出实验顺序，再依次读取编号。');
   if (!state.reportConfirmed) return reply('请在终端打开事故报告并确认已阅。');
   if (!state.coupler) return reply('从控制室东门进入维修间。维修柜里有备用耦合器。');
+  if (canEchoAct(state, 'isolate_pipe')) {
+    const requested = pipeCoordinates(request);
+    if (requested?.row === state.coolingFaultRow && /旁通|隔离|\bbypass\b|\bisolate\b/i.test(request)) {
+      return {...reply('我会尝试旁通你报出的接头。', 'isolate_pipe'), ...requested};
+    }
+    return reply(phrase('我只读到第 {row} 行掉压。请核对红色接头，告诉我要旁通哪一行、哪一列。', {row: state.coolingFaultRow}));
+  }
   if (/校准|调一段|远程调整|帮我.*管路|\balign\b|\bcalibrate\b/i.test(request) && canEchoAct(state, 'align_pipe')) {
     return reply('我会远程校准一段管路。接着检查连通性并试压。', 'align_pipe');
   }

@@ -82,10 +82,14 @@ export function safePassage({pressure, particles, interlock}) {
   return pressure <= PRESSURE_LIMIT && particles <= PARTICLE_LIMIT && interlock;
 }
 
+const pipePath = traceCircuit(PIPE_LAYOUT).energized;
+
+export function pipeFault(tiles) {
+  return pipePath.find(index => tiles[index] !== PIPE_LAYOUT[index]);
+}
+
 export function alignNextPipe(tiles) {
-  // 沿既定线路修复第一处偏差，保留玩家对其他管段的调整。
-  const path = traceCircuit(PIPE_LAYOUT).energized;
-  const index = path.find(tile => tiles[tile] !== PIPE_LAYOUT[tile]);
+  const index = pipeFault(tiles);
   if (index === undefined) return null;
   tiles[index] = PIPE_LAYOUT[index];
   return index;
