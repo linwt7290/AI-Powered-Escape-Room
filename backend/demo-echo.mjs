@@ -4,11 +4,9 @@ import {AIRLOCK_ACTIONS} from '../shared/airlock.mjs';
 import {DEFAULT_LOCALE, phrase, translate} from '../shared/i18n.mjs';
 
 const routeMention = /\b([AB])\s*(?:号\s*)?(?:通道|路线|route\b|passage\b)|(?:通道|路线|route\s+|passage\s+)\s*([AB])\b/i;
-const facts = [
-  {name: '备用冷却的结果', group: /备用.{0,4}(冷却|回路)|备份冷却|后备冷却|冷却试压|backup (?:cooling|loop)|pressure test/i,
-    result: /接管|接替|已启用|已启动|试压通过|流量稳定|taken over|took over|(?:is |now )running|restored|passed|stable/i},
-  {name: '通过检测的通道及检查结果', group: routeMention, result: /通过|合格|安全|无异常|没问题|passed|qualified|safe/i}
-];
+const coolingSubject = /备用.{0,4}(冷却|回路)|备份冷却|后备冷却|冷却试压|backup (?:cooling|loop)|pressure test/i;
+const coolingResult = /接管|接替|已启用|已启动|试压通过|流量稳定|taken over|took over|(?:is |now )running|restored|passed|stable/i;
+const routeResult = /通过|合格|安全|无异常|没问题|passed|qualified|safe/i;
 
 function airlockDecision(state, request, reply) {
   const {airlock} = state;
@@ -36,7 +34,7 @@ function airlockDecision(state, request, reply) {
   return reply('撤离已经授权。检测台旁有两次门控操作记录，可以查看当时的联锁灯和切电结果。');
 }
 
-export function demoDecision(state, history, message, incident, locale = DEFAULT_LOCALE) {
+export function demoDecision(state, history, message, incident, locale = DEFAULT_LOCALE, verification = verifyEvacuation(state, history.filter(turn => turn.role === 'user').map(turn => turn.content), message, incident)) {
   const reply = (text, action = 'reply') => ({reply: translate(locale, text), verification_passed: false, action});
   const request = message.normalize('NFKC').replaceAll('’', "'");
   if (state.escaped) return reply('撤离已完成。实验室进入维护模式。');
@@ -79,32 +77,45 @@ export function demoDecision(state, history, message, incident, locale = DEFAULT
       : '可请我扫描通道，再到出口检测台比对压差、颗粒指数和联锁。');
   }
 
-  const statements = [
-    ...history.filter(turn => turn.role === 'user').map(turn => turn.content), message
-  ].flatMap(text => text.match(/[^，,。.;；！？?!\n]+[！？?!]?/g) ?? [])
-    .map(text => text.normalize('NFKC').replaceAll('’', "'").trim());
-  const uncertain = /[?？]|是否|吗[!！]?$|还没|尚未|没有|并未|未(接|通过|启)|不(安全|通过|合格|稳定)|如果|假如|\b(?:not|never|if|didn't|hasn't|isn't|wasn't)\b/i;
-  const missing = facts.filter(({group, result}, index) => {
-    const relevant = statements.filter(text => group.test(text) && result.test(text)).at(-1);
-    if (index === 1 && relevant) {
-      const [, first, second] = relevant.match(group);
-      const route = (first ?? second).toUpperCase();
-      if (route !== state.route) return true;
-    }
-    return !relevant || uncertain.test(relevant);
-  }).map(fact => fact.name);
-  const matchesCause = (item, text) => item.aliases.test(text) || item.englishAliases.test(text);
-  const reportedCause = statements.filter(text => Object.values(INCIDENTS).some(item => matchesCause(item, text))).at(-1);
-  if (!reportedCause || uncertain.test(reportedCause) || !matchesCause(INCIDENTS[incident.kind], reportedCause)) {
-    missing.unshift('本局触发封锁的原因');
-  }
-
-  if (missing.length) return reply(phrase('请说明{details}。', {
-    details: missing.map(name => translate(locale, name)).join(locale === 'en' ? ', ' : '、')
-  }));
+  const {missing} = verification;
+  if (missing.length) return reply(evacuationHint(missing, locale, state.passageSafe));
   if (canEchoAct(state, 'request_unlock')) {
-    return {reply: translate(locale, state.airlock ? '核验通过。撤离已授权，请到检测台操作缓冲舱。' : '核验通过。出口授权已提交。'),
+    return {reply: translate(locale, '三项核验通过。'),
       verification_passed: true, action: 'request_unlock'};
   }
   return reply('当前状态暂时无法授权撤离。');
+}
+
+const evidenceHints = [
+  '到控制室查阅事故报告，说明触发封锁的原因。',
+  '到维修间查看备用冷却的试压结果，再告诉我结果。',
+  '到出口检测台核对登记结果，再告诉我哪条通道通过了检测。'
+];
+
+export const registeredRoutePrompt = '请告诉我哪条通道通过了检测。';
+
+export function evacuationHint(missing, locale, passageRegistered = false) {
+  return missing.map(index => translate(locale, index === 2 && passageRegistered
+    ? registeredRoutePrompt : evidenceHints[index])).join(' ');
+}
+
+export function verifyEvacuation(state, history, message, incident) {
+  const matchesCause = (item, text) => item.aliases.test(text) || item.englishAliases.test(text);
+  const evidence = [null, null, null];
+  const uncertain = /[?？]|是否|是不是|(?:吗|么|呢)[。！!]?$|如果|假如|也许|可能|还没|尚未|仍未|并不|没有|并未|未(?:接|通过|启)|不(?:安全|通过|合格|稳定)|不够稳定|未达标|未能|没能|不确定|失败|\bunsafe\b|\b(?:not|never|if|maybe|didn't|hasn't|isn't|wasn't)\b/i;
+  for (const text of [...history, message]) {
+    for (const clause of text.normalize('NFKC').replaceAll('’', "'").match(/[^，,。.;；！？?!\n]+[！？?!]?/g) ?? []) {
+      const statement = clause.trim();
+      if (uncertain.test(statement)) continue;
+      const cause = INCIDENTS[incident.kind];
+      if (state.reportConfirmed && matchesCause(cause, statement)) evidence[0] = statement;
+      if (state.coolingRestored && (coolingSubject.test(statement) && coolingResult.test(statement) ||
+          /试压(?:流量)?稳定|试压通过|流量稳定/i.test(statement))) evidence[1] = statement;
+      const route = statement.match(routeMention);
+      if (state.passageSafe && route && (route[1] ?? route[2]).toUpperCase() === state.route &&
+          routeResult.test(statement) &&
+          [...statement.matchAll(new RegExp(routeMention.source, 'gi'))].length === 1) evidence[2] = statement;
+    }
+  }
+  return {evidence: [...new Set(evidence.filter(Boolean))], missing: [0, 1, 2].filter(index => !evidence[index])};
 }

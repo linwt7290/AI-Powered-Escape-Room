@@ -78,8 +78,30 @@ export function traceCircuit(tiles) {
   return {connected: false, energized, leak: energized.at(-1) ?? 0};
 }
 
-export function safePassage({pressure, particles, interlock}) {
-  return pressure <= PRESSURE_LIMIT && particles <= PARTICLE_LIMIT && interlock;
+export function passageFailures({pressure, particles, interlock}) {
+  return [
+    ...(pressure > PRESSURE_LIMIT ? ['pressure'] : []),
+    ...(particles > PARTICLE_LIMIT ? ['particles'] : []),
+    ...(!interlock ? ['interlock'] : [])
+  ];
+}
+
+export function safePassage(readings) {
+  return passageFailures(readings).length === 0;
+}
+
+export function describePassageCheck(route, readings) {
+  return phrase('{route} 通道{result}。压差 {pressure}（上限 {pressureLimit}），颗粒指数 {particles}（上限 {particleLimit}），{interlock}。', {
+    route, result: safePassage(readings) ? '通过检测' : '未通过检测',
+    pressure: readings.pressure, pressureLimit: PRESSURE_LIMIT,
+    particles: readings.particles, particleLimit: PARTICLE_LIMIT,
+    interlock: readings.interlock ? '门锁联锁有响应' : '门锁联锁无响应'
+  });
+}
+
+export function passageReadings(kind, passes) {
+  const safe = {pressure: 3, particles: 1, interlock: true};
+  return passes ? safe : {...safe, ...INCIDENTS[kind].failedReading};
 }
 
 const pipePath = traceCircuit(PIPE_LAYOUT).energized;
@@ -107,9 +129,8 @@ export function createCase(random = Math.random) {
 
   const kinds = Object.keys(INCIDENTS);
   const kind = kinds[Math.floor(random() * kinds.length)];
-  const safe = {pressure: 3, particles: 1, interlock: true};
-  const unsafe = {...safe, ...INCIDENTS[kind].failedReading};
-  const routes = random() < .5 ? {A: safe, B: unsafe} : {A: unsafe, B: safe};
+  const safeRoute = random() < .5 ? 'A' : 'B';
+  const routes = {A: passageReadings(kind, safeRoute === 'A'), B: passageReadings(kind, safeRoute === 'B')};
   const preferredScan = random() < .5 ? 'A' : 'B';
-  return {digits, tiles, routes, kind, preferredScan};
+  return {digits, tiles, routes, kind, preferredScan, safeRoute};
 }

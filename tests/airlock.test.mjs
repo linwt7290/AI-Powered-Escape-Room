@@ -28,6 +28,7 @@ test('an early instruction is rejected and the manual route can retry without a 
   enterChamber(state);
   finishClosing(state);
   assert.equal(airlockContext(airlock).innerDoorClosed, null);
+  assert.deepEqual(airlockContext(airlock).display, {innerClosed: true, outerOpen: false, light: 'green'});
   applyAirlockAction(state, AIRLOCK_ACTIONS.now);
   assert.equal(state.unlocked, true);
   assert.equal(airlock.spare, false);

@@ -1,6 +1,6 @@
 import {phrase} from '../shared/i18n.mjs';
 import {locale, localText, t} from './ui-language.mjs';
-import {alignNextPipe, FLOW_RESULT, GRID_SIZE, pipeFault, PRESSURE_LIMIT, PARTICLE_LIMIT, rotatePipe, safePassage, traceCircuit} from '../shared/puzzles.mjs';
+import {alignNextPipe, describePassageCheck, FLOW_RESULT, GRID_SIZE, pipeFault, PRESSURE_LIMIT, PARTICLE_LIMIT, rotatePipe, safePassage, traceCircuit} from '../shared/puzzles.mjs';
 import {canEchoAct, SCAN_FIELDS} from '../shared/rules.mjs';
 
 const byId = id => document.getElementById(id);
@@ -100,11 +100,12 @@ export function createDevices(getState, feedback, render) {
       : '检测台等待稳定冷却。恢复后，请 ECHO 扫描并上传通道读数。');
     for (const radio of routeOptions.querySelectorAll('input')) {
       const scanned = state[SCAN_FIELDS[radio.value]];
-      radio.disabled = !scanned || state.passageSafe;
+      radio.disabled = !scanned;
       const readings = incident.routes[radio.value];
       localText(radio.parentElement.querySelector('[data-reading]'), scanned ? describeRouteReadings(readings) : '等待 ECHO 扫描');
     }
-    submit.disabled = state.passageSafe || !new FormData(routeForm).get('route');
+    localText(submit, state.passageSafe ? '核验通道读数' : '登记检测结果');
+    submit.disabled = !new FormData(routeForm).get('route');
   }
 
   restart.addEventListener('click', () => {
@@ -131,21 +132,25 @@ export function createDevices(getState, feedback, render) {
   });
 
   routeForm.addEventListener('change', () => {
-    submit.disabled = getState().passageSafe || !new FormData(routeForm).get('route');
+    submit.disabled = !new FormData(routeForm).get('route');
   });
   routeForm.addEventListener('submit', event => {
     event.preventDefault();
     const state = getState();
     const route = new FormData(routeForm).get('route');
-    if (!state.coolingRestored || state.passageSafe || !Object.hasOwn(incident.routes, route) || !state[SCAN_FIELDS[route]]) return;
+    if (!state.coolingRestored || !Object.hasOwn(incident.routes, route) || !state[SCAN_FIELDS[route]]) return;
+    if (state.passageSafe) {
+      notice('passageNotice', describePassageCheck(route, incident.routes[route]), !safePassage(incident.routes[route]));
+      return;
+    }
     if (!safePassage(incident.routes[route])) {
+      state.rejectedRoute = route;
       notice('passageNotice', '登记被拒绝。请逐项比对压差、颗粒指数和联锁。', true);
+      render();
       return;
     }
     state.passageSafe = true;
     state.route = route;
-    for (const radio of routeOptions.querySelectorAll('input')) radio.disabled = true;
-    submit.disabled = true;
     notice('passageNotice', phrase('{route} 通道通过检测。用实测结果向 ECHO 申请撤离。', {route}));
     feedback(phrase('{route} 通道通过检测。按 Q 联系 ECHO。', {route}));
     render();

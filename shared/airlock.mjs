@@ -20,8 +20,15 @@ export function validAirlock(airlock) {
     (!airlock.schedule || canControlAirlock(airlock, airlock.schedule));
 }
 
+export function airlockDisplay(phase) {
+  const innerClosed = phase === 'closed' || phase === 'open';
+  const light = {outside: null, closing: 'yellow', closed: 'green', rejected: 'red', open: 'green'}[phase];
+  return {innerClosed, outerOpen: phase === 'open', light};
+}
+
 export function airlockContext({authorized, phase, sensor, schedule}) {
   return {
+    phase, display: airlockDisplay(phase),
     authorized, sensorOnline: sensor, schedule,
     inChamber: phase !== 'outside',
     innerDoorClosed: sensor ? ['closed', 'open'].includes(phase) : null,

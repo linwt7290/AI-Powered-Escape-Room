@@ -97,6 +97,8 @@ let state = initialState();
 let incident;
 let player = {...SPAWN, facing: 'down', moving: false, pickupUntil: 0};
 let history = [];
+let evacuationEvidence = [];
+let showScanActions = false;
 const progressTimeline = [];
 let progressStartedAt = performance.now();
 let previousProgress = progressSnapshot(state, player.room);
@@ -152,7 +154,8 @@ function renderComms() {
   byId('send').disabled = Boolean(pending) || !chatInput.value.trim();
   chatInput.readOnly = Boolean(pending);
   for (const {button, actions} of quickActions) {
-    button.hidden = !actions.some(action => canEchoAct(state, action));
+    button.hidden = !actions.some(action => canEchoAct(state, action) &&
+      (showScanActions || !action.startsWith('scan_route_')));
     button.disabled = Boolean(pending);
   }
   byId('echoActions').hidden = quickActions.every(({button}) => button.hidden);
@@ -605,7 +608,9 @@ function applyEchoAction({action, row, column}) {
   if (action === 'isolate_pipe') return devices.isolate(row, column);
   if (action === 'request_unlock') {
     state.airlock.authorized = true;
-    return phrase('撤离已授权。前往撤离区，操作 {route} 通道的缓冲舱。', {route: state.route});
+    return phrase(player.room === 'exit'
+      ? '撤离已授权。请在检测台操作 {route} 通道的缓冲舱。'
+      : '撤离已授权。前往撤离区，操作 {route} 通道的缓冲舱。', {route: state.route});
   }
   if (Object.values(AIRLOCK_ACTIONS).includes(action)) return applyAirlockAction(state, action, locale());
   const route = Object.keys(SCAN_ACTIONS).find(name => SCAN_ACTIONS[name] === action);
@@ -625,8 +630,8 @@ byId('chatForm').addEventListener('submit', async event => {
   const requested = echoSettings;
   const payload = {
     state: structuredClone(state), room: player.room, history: history.slice(-10), message,
-    progressTimeline: progressTimeline.slice(),
-    incident: {kind: incident.kind, preferredScan: incident.preferredScan}
+    progressTimeline: progressTimeline.slice(), evacuationEvidence,
+    incident: {kind: incident.kind, preferredScan: incident.preferredScan, safeRoute: incident.safeRoute}
   };
   const turn = addTurn('user', message);
   chatInput.value = '';
@@ -637,6 +642,8 @@ byId('chatForm').addEventListener('submit', async event => {
     if (pending !== controller) return;
     if (!ok) throw new Error(result.error);
     const {decision, messages, mode} = result;
+    evacuationEvidence = result.evacuationEvidence ?? [];
+    showScanActions ||= result.offerScan === true;
     if (requested === echoSettings) connection = mode === 'model' ? '模型在线' : modeLabels.demo;
     history.push({role: 'user', content: message}, {role: 'assistant', content: decision.reply});
     addTurn('assistant', decision.reply);
@@ -756,6 +763,8 @@ function reset() {
   progressStartedAt = performance.now();
   previousProgress = progressSnapshot(state, player.room);
   history = [];
+  evacuationEvidence = [];
+  showScanActions = false;
   nearest = undefined;
   opening = 0;
   code.value = '';

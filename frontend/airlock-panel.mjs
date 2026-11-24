@@ -1,5 +1,5 @@
 import {locale, localText} from './ui-language.mjs';
-import {AIRLOCK_ACTIONS, enterChamber, finishClosing, leaveChamber} from '../shared/airlock.mjs';
+import {airlockDisplay, AIRLOCK_ACTIONS, enterChamber, finishClosing, leaveChamber} from '../shared/airlock.mjs';
 
 const byId = id => document.getElementById(id);
 const doorLabels = {
@@ -24,11 +24,11 @@ export function createAirlockPanel(getState, publish) {
     byId('passageCheck').hidden = authorized;
     byId('airlockPanel').hidden = !authorized || byId('echoDialog').dataset.console !== 'airlock';
     byId('airlockLog').hidden = !authorized;
-    const innerClosed = phase === 'closed' || phase === 'open';
+    const {innerClosed, outerOpen} = airlockDisplay(phase);
     byId('innerDoor').dataset.state = innerClosed ? 'closed' : phase;
-    byId('outerDoor').dataset.state = phase === 'open' ? 'open' : 'locked';
+    byId('outerDoor').dataset.state = outerOpen ? 'open' : 'locked';
     localText(byId('innerDoorState'), innerClosed ? '已关严' : phase === 'closing' ? '关闭中' : phase === 'rejected' ? '未关严' : '待进入');
-    localText(byId('outerDoorState'), phase === 'open' ? '已打开' : '锁定');
+    localText(byId('outerDoorState'), outerOpen ? '已打开' : '锁定');
     localText(byId('airlockSensor'), sensor
       ? '门位传感器在线。ECHO 能读取内门状态。'
       : '门位传感器离线。现场联锁灯仍可观察，备件可在维修柜取得。');
