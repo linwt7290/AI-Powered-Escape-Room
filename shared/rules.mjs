@@ -1,6 +1,7 @@
 import {AIRLOCK_ACTIONS, canControlAirlock, initialAirlock} from './airlock.mjs';
 import {phrase} from './i18n.mjs';
-import {GRID_SIZE} from './puzzles.mjs';
+import {missingPassageStandards} from './passage-standards.mjs';
+import {GRID_SIZE, passageFailures} from './puzzles.mjs';
 
 export const UNLOCK_REQUIREMENTS = [
   'card', 'journal', 'rack', 'archiveRecovered', 'identity', 'password', 'reportConfirmed',
@@ -11,7 +12,7 @@ export const SCAN_FIELDS = {A: 'scannedA', B: 'scannedB'};
 export const SCAN_ACTIONS = {A: 'scan_route_a', B: 'scan_route_b'};
 export const ECHO_FIELDS = [...UNLOCK_REQUIREMENTS, 'alignedPipe', ...Object.values(SCAN_FIELDS), 'unlocked', 'escaped'];
 export const ECHO_ACTIONS = [
-  'reply', 'recover_archive', 'align_pipe', 'isolate_pipe', ...Object.values(SCAN_ACTIONS), 'request_unlock', ...Object.values(AIRLOCK_ACTIONS)
+  'reply', 'recover_archive', 'align_pipe', 'isolate_pipe', ...Object.values(SCAN_ACTIONS), 'scan_route_both', 'request_unlock', ...Object.values(AIRLOCK_ACTIONS)
 ];
 
 export function initialState() {
@@ -19,9 +20,19 @@ export function initialState() {
     card: false, journal: false, rack: false, archiveRecovered: false, identity: false, password: false,
     reportOpen: false, reportConfirmed: false, coupler: false, coolingRestored: false, coolingFaultRow: null,
     alignedPipe: false, scannedA: false, scannedB: false,
-    passageSafe: false, route: null,
+    passageSafe: false, route: null, standards: {}, selectedRoute: null, routeFailure: null,
     unlocked: false, escaped: false, airlock: initialAirlock()
   };
+}
+
+export function confirmPassage(state, routes, route) {
+  if (!state.coolingRestored || state.airlock.authorized || !state.scannedA || !state.scannedB ||
+      !Object.hasOwn(routes, route)) return 'unavailable';
+  if (missingPassageStandards(state.standards).length) return 'missing-standards';
+  state.selectedRoute = route;
+  state.routeFailure = passageFailures(routes[route])[0] ?? null;
+  state.airlock.authorized = true;
+  return 'confirmed';
 }
 
 export function canUnlock(state) {
@@ -39,6 +50,7 @@ export function canEchoAct(state, action) {
     case 'isolate_pipe': return state.reportConfirmed && state.coupler && !state.coolingRestored && validPipeNumber(state.coolingFaultRow);
     case SCAN_ACTIONS.A: return state.coolingRestored && !state.scannedA && !state.passageSafe;
     case SCAN_ACTIONS.B: return state.coolingRestored && !state.scannedB && !state.passageSafe;
+    case 'scan_route_both': return state.coolingRestored && (!state.scannedA || !state.scannedB) && !state.passageSafe;
     case 'request_unlock': return canUnlock(state);
     default: return canControlAirlock(state.airlock, action);
   }
@@ -62,7 +74,7 @@ export function currentObjective(state) {
   if (state.unlocked) return {label: phrase('从 {route} 通道撤离', {route: state.route}), target: 'lane'};
   if (state.airlock?.authorized) return {label: '到撤离区操作缓冲舱', target: 'exit'};
   if (state.passageSafe) return {label: '提交实测结果给 ECHO', target: 'echo'};
-  if (state.coolingRestored && !state.scannedA && !state.scannedB) return {label: '请 ECHO 扫描通道', target: 'echo'};
+  if (state.coolingRestored && (!state.scannedA || !state.scannedB)) return {label: '请 ECHO 扫描通道', target: 'echo'};
   if (state.coolingRestored) return {label: '到撤离区核验通道', target: 'exit'};
   if (state.coupler) return {label: '在维修间接通备用冷却', target: 'cooling'};
   if (state.reportConfirmed) return {label: '到维修间取耦合器', target: 'locker'};

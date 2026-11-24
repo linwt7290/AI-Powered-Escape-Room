@@ -1,3 +1,4 @@
+import {hasPressureBoundary, missingPassageStandards, PASSAGE_STANDARDS} from '../shared/passage-standards.mjs';
 import {DEFAULT_LOCALE, phrase, translate} from '../shared/i18n.mjs';
 import {createServer} from 'node:http';
 import {readFile} from 'node:fs/promises';
@@ -46,12 +47,13 @@ const assets = new Map([
   ['/frontend/room-props.mjs', ['../frontend/room-props.mjs', 'text/javascript; charset=utf-8']],
   ['/frontend/pixel-art.mjs', ['../frontend/pixel-art.mjs', 'text/javascript; charset=utf-8']],
   ['/shared/puzzles.mjs', ['../shared/puzzles.mjs', 'text/javascript; charset=utf-8']],
+  ['/shared/passage-standards.mjs', ['../shared/passage-standards.mjs', 'text/javascript; charset=utf-8']],
   ['/shared/rules.mjs', ['../shared/rules.mjs', 'text/javascript; charset=utf-8']],
   ['/shared/progress-timeline.mjs', ['../shared/progress-timeline.mjs', 'text/javascript; charset=utf-8']]
 ]);
 const instructions = `你是密室游戏的中央 AI ECHO。以系统给出的游戏状态和 availableActions 为准，简短回应玩家。保护尚未读取的报告、密码及扫描结果。
 如果现有信息无法回答玩家的问题、也无法给出有根据的提示，选择 reply 动作，并在 reply 字段中写「我不知道」。
-你可以按上下文申请设备动作。玩家求助于损坏的机柜存档时选择 recover_archive。请求校准管路时选择 align_pipe，只调一段。请求扫描时，明确指定 A 或 B 就选择相应的 scan_route_a 或 scan_route_b。未指定时，可据对话选择其中一条，preferredScan 是本局的调度建议。已完成扫描的通道可引导玩家去检测台读数。设备动作的结果由游戏显示，请描述待执行动作，把实际结果留给设备回执。
+你可以按上下文申请设备动作。玩家求助于损坏的机柜存档时选择 recover_archive。请求校准管路时选择 align_pipe，只调一段。请求扫描时，明确指定 A 或 B 就选择相应的 scan_route_a 或 scan_route_b。请求扫描两条时选择 scan_route_both。passageEvidence 列出了玩家已取得的标准或缺项位置，按它回应查询。selectedRoute 是玩家选定的路线。让玩家自己比对读数并确认路线。未指定时，可据对话选择其中一条，preferredScan 是本局的调度建议。已完成扫描的通道可引导玩家去检测台读数。设备动作的结果由游戏显示，请描述待执行动作，把实际结果留给设备回执。
 根据进度给提示。玩家只问「下一步」或「接下来做什么」时，以 currentState.objective 为准，用一句话提示该目标对应的一项操作，必要时附上走法。专门询问密码、设备或证据时，按对应规则回答。只有玩家明确询问后续流程时才展开。玩家问「密码多少」「密码是什么」或「怎么推导密码」时，一律视为解谜求助，选择 reply，直接按当前进度给一条提示，不要以「我不知道」开头，也不要报出密码或完整实验顺序。journal 为 false 时，引导去研究室办公桌查看研究日志。日志已有而 archiveRecovered 为 false 时，rack 为 false 则引导去档案室调查机柜，rack 为 true 则提示可以请 ECHO 恢复机柜存档。两份线索齐备时，提示把两份记录里的先后关系合起来，排出实验顺序，再按顺序读取对应编号。备用冷却修复后，引导玩家扫描并比较通道。unlocked 或 escaped 为 true 时只回复。
 研究室有工作证与研究日志，控制室有安全终端，档案室有机柜存档，维修间有备用冷却与备件柜，撤离区有检测台。location 是玩家所在的房间。有需要时按这张门牌图引路：${roomLayout}。
 放行核验只认服务端给出的 evacuationMissing。请求放行或补报证据时，若有缺项，只引导去对应设备查找并汇报：封锁原因去控制室的事故报告，备用冷却去维修间看试压结果，达标通道去出口检测台看登记结果。询问证据出处时只给查找位置，不复述谜题答案或让玩家照抄。三项齐备且 availableActions 含 request_unlock 时，玩家提出申请或补齐证据可选择该动作。
@@ -86,7 +88,7 @@ function resolveEchoSettings(overrides) {
   return {mode: 'model', model};
 }
 
-const nextStepQuestion = /^(?:我(?:现在)?(?:该|要)?|现在)?(?:然后呢|下一步(?:呢|做什么)?|接下来(?:呢|(?:我)?(?:该|要)?做什么))|^(?:what(?: should| do) I do next|what next|next step)/i;
+const nextStepQuestion = /^(?:我(?:现在)?(?:该|要)?|现在)?(?:然后呢|下一步(?:呢|做什么)?|接下来(?:呢|(?:我)?(?:该|要|需要)?做什么))|^(?:what(?: should| do) I do next|what next|next step)/i;
 const locationQuestion = /^(?:我(?:现在)?在哪(?:里|个房间)?|where am I)[？?。.!！]*$/i;
 const scanCommand = /^(?:(?:请(?:你|\s*ECHO)?|帮我|开始|可以帮我|能帮我)\s*)?(?:扫描|重新扫描|请选择一条待查通道进行扫描|(?:please\s+)?(?:scan|rescan|choose (?:a passage to scan|an unscanned route and scan it)))|^(?:请)?[AB]\s*通道[，, ]*扫描/i;
 
@@ -159,7 +161,11 @@ async function handleEcho({request, response, locale, fail}, configOnly = false)
       typeof incident?.kind !== 'string' || !Object.hasOwn(INCIDENTS, incident.kind) ||
       typeof incident.preferredScan !== 'string' || !Object.hasOwn(SCAN_FIELDS, incident.preferredScan) ||
       (Object.hasOwn(state, 'airlock') && (!validAirlock(state.airlock) ||
-        (state.airlock.authorized && !UNLOCK_REQUIREMENTS.every(field => state[field])) ||
+        (state.airlock.authorized && (state.selectedRoute
+          ? !Object.hasOwn(SCAN_FIELDS, state.selectedRoute) || !state.scannedA || !state.scannedB ||
+            missingPassageStandards(state.standards).length > 0 ||
+            !UNLOCK_REQUIREMENTS.filter(field => field !== 'passageSafe').every(field => state[field])
+          : !UNLOCK_REQUIREMENTS.every(field => state[field]))) ||
         (state.airlock.phase === 'open') !== state.unlocked)) ||
       (incident.safeRoute !== undefined && !Object.hasOwn(SCAN_FIELDS, incident.safeRoute)) ||
       (state.rejectedRoute !== undefined && (!Object.hasOwn(SCAN_FIELDS, state.rejectedRoute) ||
@@ -175,9 +181,17 @@ async function handleEcho({request, response, locale, fail}, configOnly = false)
   if (state.airlock) snapshot.airlock = state.airlock;
   if (Object.hasOwn(state, 'coolingFaultRow')) snapshot.coolingFaultRow = state.coolingFaultRow;
   const objective = currentObjective(snapshot);
+  const missingStandards = missingPassageStandards(state.standards);
   const context = {...snapshot, objective: objective.label};
+  if (state.standards) {
+    context.selectedRoute = state.selectedRoute;
+    context.passageEvidence = Object.entries(PASSAGE_STANDARDS).map(([id, clue]) =>
+      translate(locale, missingStandards.includes(id) ? clue.location : clue.reading));
+  }
   const targetRoom = OBJECTS[objective.target]?.room;
-  const step = nextStepQuestion.test(message.trim());
+  const mainStep = /^(?:主线|主流程)(?:任务|进度)?(?:[，,：:\s]*)(?:的)?(?:下一步|接下来|现在|目标|到哪|是什么)?[呢吗？?。！!]*$/i.test(message.trim()) ||
+    /^(?:(?:我)?(?:现在)?的?主线|主流程).{0,12}(?:下一步|进度|目标)|^(?:main (?:objective|quest|progress)|what.*main (?:objective|quest))/i.test(message.trim());
+  const step = mainStep || nextStepQuestion.test(message.trim());
   const canScan = ECHO_ACTIONS.some(action => action.startsWith('scan_route_') && canEchoAct(snapshot, action));
   const scanHelp = canScan && (step && !snapshot.scannedA && !snapshot.scannedB ||
     /(?:怎么|如何|怎样).{0,12}扫描|扫描.{0,8}(?:怎么|如何)|how.{0,24}scan/i.test(message));
@@ -187,7 +201,9 @@ async function handleEcho({request, response, locale, fail}, configOnly = false)
   if (room) {
     context.location = ROOMS[room].name;
     if (targetRoom && targetRoom !== room) {
-      context.objectiveDirection = directionNames[nextDoor(room, targetRoom)];
+      const direction = nextDoor(room, targetRoom);
+      context.objectiveDirection = directionNames[direction];
+      context.nextRoom = ROOMS[ROOMS[room].doors[direction]].name;
       context.objectiveRoom = ROOMS[targetRoom].name;
     }
   }
@@ -202,12 +218,12 @@ async function handleEcho({request, response, locale, fail}, configOnly = false)
     ...history.filter(turn => turn.role === 'user').map(turn => turn.content)], reportedMessage, incident);
   const safeRoute = incident.safeRoute ?? snapshot.route;
   if (context.coolingRestored) {
-    context.passage = {pressureLimit: PRESSURE_LIMIT, particleLimit: PARTICLE_LIMIT, interlockRequired: true,
+    context.passage = {...(!state.standards && {pressureLimit: PRESSURE_LIMIT, particleLimit: PARTICLE_LIMIT, interlockRequired: true}),
       rejectedRoute: state.rejectedRoute ?? null, readings: {}};
     for (const [route, field] of Object.entries(SCAN_FIELDS)) {
       if (!snapshot[field] || !safeRoute) continue;
       const readings = passageReadings(incident.kind, route === safeRoute);
-      context.passage.readings[route] = {...readings, failures: passageFailures(readings)};
+      context.passage.readings[route] = {...readings, ...(!state.standards && {failures: passageFailures(readings)})};
     }
   }
   context.availableActions = ECHO_ACTIONS.filter(action => canEchoAct(snapshot, action));
@@ -215,10 +231,147 @@ async function handleEcho({request, response, locale, fail}, configOnly = false)
     context.evacuationMissing = verification.missing.map(index => ['封锁原因', '备用冷却结果', '达标通道'][index]);
   }
   if (context.availableActions.some(action => action.startsWith('scan_route_'))) context.preferredScan = incident.preferredScan;
-  const answer = (reply, offerScan = false, action = 'reply') => json(response, 200, {
+  const answer = (reply, offerScan = false, action = 'reply', pressureCriterionVerified = false) => json(response, 200, {
     decision: {...replyOnly(reply), action}, messages: null, mode: requestMode,
-    evacuationEvidence: verification.evidence, offerScan
+    evacuationEvidence: verification.evidence, offerScan, ...(pressureCriterionVerified && {pressureCriterionVerified})
   });
+  const confirmsGaugeTest = /^(?:请(?:帮我)?)?(?:确认|核对|记录)(?:一下)?(?:压差)?(?:验收)?(?:测试|实测)(?:结果|记录)[。！!？?]*$|^(?:please )?(?:confirm|verify|record) (?:the )?(?:pressure )?test results[.?!]*$/i.test(message.trim());
+  const asksAboutGauge = room === 'service' && state.gauge && (
+    /压差表|表针|校零|归零|撤离基准|验收测试|检修盒|便签|逐档|升压|等压|压差上限|(?:[AB].{0,6})压差|gauge|calibrat|zero|needle|pressure limit|reference mode|inspection box|worn note|test step|压差.{0,8}(?:上限|标准)|(?:[0-9０-９一二三四五六]\s*档?\s*)(?:通过|拒绝|不通过|没通过)|\d+\s+(?:passed|failed|rejected)/i.test(message) ||
+    confirmsGaugeTest || state.gauge.inspecting === true && step && !mainStep);
+  if (asksAboutGauge) {
+    const {mode, calibrated, offset, noteFound, tested} = state.gauge;
+    context.gauge = {
+      inspecting: state.gauge.inspecting === true,
+      mode: ['zero', 'reference'].includes(mode) ? mode : null,
+      calibrated: calibrated === true,
+      noteFound: noteFound === true,
+      tested: Array.isArray(tested) ? [...new Set(tested.filter(tick => Number.isInteger(tick) && tick >= -4 && tick <= 6))] : [],
+      offset: mode === 'zero' && Number.isInteger(offset) && offset >= -4 && offset <= 6 ? offset : null
+    };
+    const report = message.normalize('NFKC').replace(/[零一二三四五六]/g, digit => String('零一二三四五六'.indexOf(digit)));
+    const passed = [...report.matchAll(/(?<![\d.-])(\d+)\s*(?:档|级)?\s*(?:可以|已|is\s+)?\s*(?:通过|合格|pass(?:ed|es)?)/gi)];
+    const rejected = [...report.matchAll(/(?<![\d.-])(\d+)\s*(?:档|级)?\s*(?:被|is\s+)?\s*(?:拒绝|不通过|没通过|没有通过|未通过|不合格|reject(?:ed|s)?|fail(?:ed|s)?)/gi)];
+    const declared = report.match(/(?:上限|压差标准|limit)\s*(?:是否为|是不是|是否是|是|为|is|of|[:=])?\s*(\d+)|(?<![\d.-])(\d+)\s*(?:档)?\s*(?:是|为|is)\s*(?:the\s+)?(?:撤离)?(?:压差)?(?:上限|limit)/i);
+    const isReport = confirmsGaugeTest || declared || passed.length && rejected.length;
+    if (isReport) {
+      const matches = declared ? Number(declared[1] ?? declared[2]) === PRESSURE_LIMIT : true;
+      const matchesPair = !passed.length && !rejected.length || passed.some(match => Number(match[1]) === PRESSURE_LIMIT) &&
+        rejected.some(match => Number(match[1]) === PRESSURE_LIMIT + 1);
+      if (matches && matchesPair && hasPressureBoundary(context.gauge)) {
+        return answer(translate(locale, '实测记录与结论一致。已确认撤离压差上限。'), false, 'reply', true);
+      }
+      return answer(translate(locale, '还无法确认。核对相邻的通过档和拒绝档，补测缺项后再汇报。'));
+    }
+    if (step || requestMode === 'demo') {
+      const progress = context.gauge;
+      if (step && state.standards?.lights === true) {
+        return answer(translate(locale, '压差标准已经收入调查记录。'));
+      }
+      if (hasPressureBoundary(progress)) {
+        return answer(translate(locale, '实测记录齐全。可以请我确认测试结果。'));
+      }
+      const hint = /检修盒|便签.{0,8}(?:哪|找)|inspection box|where.*note/i.test(message) || progress.calibrated && !progress.noteFound
+        ? '检修盒在设备走廊左侧，靠近通往值班室的门。走近后调查盒里的便签。'
+        : progress.mode === 'reference'
+          ? '找出相邻的通过档和拒绝档，再把结果或推得的压差上限告诉我。'
+          : progress.calibrated ? '便签已经找到。切到验收测试，按便签从起始档逐档测试。'
+            : progress.mode !== 'zero' ? '先切到校零档，接通内部等压回路。'
+              : progress.offset === 0 ? '表针已对准零刻度，可以确认校零。'
+                : progress.offset > 0 ? '表针在零刻度右侧，用减号往回调。'
+                  : '表针在零刻度左侧，用加号往回调。';
+      return answer(translate(locale, hint));
+    }
+  }
+  const asksAboutPhoto = room === 'archive' && state.photo && (step && state.photo.inspecting === true && !mainStep ||
+    /合照|合影|相框|照片|连拍|回执|门缝|联锁验收|photo|snapshot|receipt|interlock test/i.test(message));
+  if (asksAboutPhoto) {
+    context.photo = {
+      inspecting: state.photo.inspecting === true,
+      frame: [1, 2, 3].includes(state.photo.frame) ? state.photo.frame : null,
+      attempted: state.photo.attempted === true, receiptInspected: state.photo.receiptInspected === true, collected: state.standards?.photo === true
+    };
+    const asksPhotoPurpose = /^(?:(?:这个|这张|研究组)?(?:合照|合影|照片))\s*(?:是)?(?:做什么(?:的)?|有什么用|用来做什么|起什么作用)[？?。.!！]*$|^what is (?:the |this )?(?:team )?photo (?:for|used for)[?.!]*$/i.test(message.trim());
+    const asksWhatPhotoIs = /^(?:研究组)?(?:合照|合影|照片)(?:是(?:什么)?)?[？?。.!！]*$/.test(message.trim());
+    if (asksPhotoPurpose || asksWhatPhotoIs) {
+      return answer(translate(locale, '合影背面夹着试运行连拍。可以放大照片，检查背景里的门控面板和测试回执。'));
+    }
+    if (step || requestMode === 'demo') {
+      const {frame, collected} = context.photo;
+      const asksDoorState = /门.{0,8}(?:开|关|合|缝)|door.{0,12}(?:open|closed|sealed)/i.test(message);
+      const hint = frame !== null && asksDoorState
+        ? frame === 1 ? '内门：仍有门缝，尚未关严' : '内门：已关严'
+        : collected ? '联锁标准已经收入调查记录。'
+        : frame === null ? '翻开相框夹层，选一张连拍放大背景里的门控面板。'
+          : step && !context.photo.receiptInspected ? '点击放大照片右侧的联锁面板，查看测试回执。'
+            : step && frame === 3 ? '已看到响应回执。请在合照面板提交你的判断。'
+              : '内门关严和发送请求是两个中间状态。找一条能证明联锁已经回应的回执。';
+      return answer(translate(locale, hint));
+    }
+  }
+  const microscope = room === 'research' && state.microscope;
+  const asksAboutMicroscope = microscope && (step && microscope.inspecting === true && !mainStep ||
+    /显微镜|紫光|焦距|对焦|调焦|光斑|亮斑|光圈|角标|计数框|参照区|气泡|实心|空心|参照片|我数了|校准.{0,8}(?:失败|没通过)|microscope|focus|violet|bubble|hollow|solid|counted|bright spot|corner marker|counting frame|reference area/i.test(message));
+  if (asksAboutMicroscope) {
+    const {violet, focused, aligned, lastCount} = microscope;
+    context.microscope = {
+      inspecting: microscope.inspecting === true,
+      violet: violet === true, focused: violet === true && focused === true,
+      aligned: violet === true && aligned === true,
+      lastCount: [1, 2, 3].includes(lastCount) ? lastCount : null,
+      collected: state.standards?.microscope === true
+    };
+    if (step || requestMode === 'demo') {
+      const progress = context.microscope;
+      const hint = progress.collected ? '颗粒标准已经收入调查记录。'
+        : !progress.violet ? '先把显微镜切换到紫光，找到参照片上的计数框。'
+          : !progress.aligned ? '用方向键移动计数框，对齐有金色角标的参照区。'
+            : !progress.focused ? '试着用近焦或远焦调节，直到亮点边缘清晰。'
+            : progress.lastCount !== null ? '重新检查计数框边界。框外亮点和空心光圈都不计入。'
+              : '空心光圈是气泡。只数计数框内的实心亮点。';
+      return answer(translate(locale, hint));
+    }
+  }
+  const asksForStandards = /还差|还缺|缺.{0,8}(?:线索|标准)|(?:标准|判读卡|检定标签|便签).{0,8}(?:哪|怎么找)|(?:哪|怎么找).{0,8}(?:标准|线索)|missing|where.*(?:criteria|standard|clue)/i.test(message);
+  const scanBoth = /扫描.*(?:两条|全部|[AB].*[AB])|(?:两条|全部|[AB].*[AB]).*扫|scan.*(?:both|all|[AB]\b.*\b[AB]\b)/i.test(message) &&
+    !/怎么|如何|为什么|结果|读数|条件|how|why|results|readings/i.test(message);
+  const secondaryScan = asksForStandards && message.match(/(?:顺便|再|也|also|then)[^。！!?]{0,12}(?:扫(?:描)?|scan)\s*(?:route\s*)?([AB])/i);
+  if (!asksAboutMicroscope && !asksAboutPhoto && !asksAboutGauge && state.standards && (asksForStandards || scanBoth)) {
+    const named = Object.keys(PASSAGE_STANDARDS).filter(id => ({
+      lights: /压差|pressure/i, microscope: /颗粒|显微镜|particle|microscope/i,
+      photo: /联锁|合照|interlock|photo/i
+    })[id].test(message));
+    const clues = named.length ? named : missingStandards;
+    const hint = clues.length ? clues.map(id => {
+      const clue = PASSAGE_STANDARDS[id];
+      return translate(locale, missingStandards.includes(id) ? clue.location : clue.reading);
+    }).join(' ') : translate(locale, '三项通道验收标准均已收集。');
+    const route = secondaryScan?.[1].toUpperCase();
+    const action = scanBoth ? 'scan_route_both' : SCAN_ACTIONS[route];
+    const scanning = action && canEchoAct(snapshot, action);
+    const scanReply = route && !scanBoth
+      ? scanning ? phrase('正在扫描 {route} 通道。', {route})
+        : snapshot[SCAN_FIELDS[route]] ? phrase('{route} 通道扫描完成，读数已上传至出口检测台。', {route})
+          : '请先恢复备用冷却，再请求扫描。'
+      : scanning ? '正在扫描 A、B 两条通道。'
+        : snapshot.scannedA && snapshot.scannedB ? 'A、B 通道扫描完成，读数已上传至出口检测台。'
+          : '请先恢复备用冷却，再请求扫描。';
+    return answer([asksForStandards && hint, action && translate(locale, scanReply)].filter(Boolean).join(' '),
+      canScan, scanning ? action : 'reply');
+  }
+  if (state.standards && /读数|扫描结果|通道条件|readings|scan results/i.test(message) &&
+      !/为什么|为何|为啥|\bwhy\b/i.test(message)) {
+    const asked = message.match(/\b([AB])\s*(?:通道|route|passage)|(?:通道|route|passage)\s*([AB])\b/i);
+    const routes = asked ? [(asked[1] ?? asked[2]).toUpperCase()] : Object.keys(SCAN_FIELDS);
+    return answer(routes.map(route => {
+      const readings = context.passage?.readings[route];
+      return translate(locale, readings
+        ? phrase('{route} 通道：压差 {pressure}，颗粒指数 {particles}，{interlock}。', {
+          route, ...readings, interlock: readings.interlock ? '联锁响应' : '联锁无响应'
+        })
+        : phrase('{route} 通道尚无扫描读数。', {route}));
+    }).join(' '), canScan);
+  }
   const asksForEvidence = /怎么|如何|哪里|在哪|哪儿|\b(?:where|how)\b/i.test(message);
   if (asksForEvidence && !/扫描|\bscan\b/i.test(message)) {
     if (/封锁.{0,8}原因|原因.{0,8}封锁|lockdown/i.test(message)) {
@@ -263,32 +416,41 @@ async function handleEcho({request, response, locale, fail}, configOnly = false)
   if (asksForCard) {
     return answer(translate(locale, snapshot.card ? '工作证已收起。' : '工作证在研究室的办公桌上。'));
   }
-  if (step && objective.target === 'exit' && !snapshot.airlock?.authorized) {
-    const hint = context.objectiveDirection
-      ? phrase('从{location}的{direction}走，前往撤离区的出口检测台核验通道读数。', {location: context.location, direction: context.objectiveDirection})
-      : '到撤离区的出口检测台核验通道读数。';
-    return answer(translate(locale, hint), canScan);
+  if ((step || locationQuestion.test(message.trim())) && context.objectiveDirection) {
+    const heading = context.nextRoom === context.objectiveRoom
+      ? '你现在在{location}，从{direction}出去就可以{objective}。'
+      : '你现在在{location}，先从{direction}进入{nextRoom}，接下来要{objective}。';
+    return answer(translate(locale, phrase(heading, {
+      location: context.location, direction: context.objectiveDirection,
+      nextRoom: context.nextRoom, objective: translate(locale, objective.label)
+    })), canScan);
   }
-  if (scanHelp) return answer(translate(locale, '请指定要扫描的通道，或请我选择一条。'), true);
+  if (step && objective.target === 'exit' && !snapshot.airlock?.authorized) {
+    return answer(translate(locale, '到撤离区的出口检测台核验通道读数。'), canScan);
+  }
+  if (step && objective.target === 'echo' && canScan && snapshot.scannedA !== snapshot.scannedB) {
+    return answer(translate(locale, phrase('{done} 通道已扫描。主线下一步是扫描 {pending} 通道。', {
+      done: snapshot.scannedA ? 'A' : 'B', pending: snapshot.scannedA ? 'B' : 'A'
+    })), true);
+  }
+  if (scanHelp) return answer(translate(locale, '可以请我扫描 A、B 两条通道，也可以指定其中一条。'), true);
   if (step && objective.target === 'card') {
     return answer(translate(locale, '先到研究室办公桌拾取工作证。'));
   }
   if (step && objective.target === 'journal') {
     return answer(translate(locale, '查看研究室办公桌上的研究日志。'));
   }
-  if (room && locationQuestion.test(message.trim()) && context.objectiveDirection &&
-      progressTimeline?.filter(event => Object.hasOwn(event.changes, 'room')).length &&
-      history.some(turn => turn.role === 'user' && nextStepQuestion.test(turn.content.trim())) &&
-      objective.target === 'rack') {
-    return answer(translate(locale, phrase('你在{location}。从{direction}走，前往档案室查看机柜存档。', {
-      location: context.location, direction: context.objectiveDirection
-    })));
+  if (room && locationQuestion.test(message.trim())) {
+    return answer(translate(locale, snapshot.airlock && airlockContext(snapshot.airlock).inChamber
+      ? '你在撤离区的缓冲舱内。'
+      : phrase('你在{location}。', {location: context.location})));
   }
   const askedRoute = message.match(/([AB])\s*(?:通道|route)|(?:通道|route)\s*([AB])/i);
   if (askedRoute && /为什么|为何|为啥|\bwhy\b/i.test(message) && /通过|达标|合格|拒绝|pass|fail|reject/i.test(message)) {
     const route = (askedRoute[1] ?? askedRoute[2]).toUpperCase();
     const readings = context.passage?.readings[route];
-    if (readings) return answer(translate(locale, describePassageCheck(route, readings)));
+    if (readings && (!state.standards || snapshot.unlocked)) return answer(translate(locale, describePassageCheck(route, readings)));
+    if (readings) return answer(translate(locale, '请在出口检测台用已收集的标准逐项比对实测读数。'));
     return answer(translate(locale, '请先扫描通道，再到出口检测台查看读数。'));
   }
   if (requestMode === 'demo') return respondToDecision(response, fail, demoDecision(snapshot, history, message, incident, locale, verification), snapshot, null, message, requestMode, verification, locale);
@@ -302,7 +464,11 @@ async function handleEcho({request, response, locale, fail}, configOnly = false)
     : responseInstructions;
   const contextInstructions = `
 最后一条消息由服务端以 JSON 发送。playerMessage 是玩家本轮原话，currentState 是服务端提供的本轮状态。核验玩家陈述时，本轮只把 playerMessage 视为玩家原话，结合规则允许使用的历史玩家陈述；currentState 是核对依据，不能充当玩家证据。
-回答前先区分玩家问的是含义、当前状态还是过去的经过。只问含义时只解释含义。问当前状态时，先读取 currentState 中对应的值；true、false 都是明确的值。历史仅用于理解指代或补充状态未覆盖的背景。旧回复或提问中的旧前提与本轮状态冲突时，按本轮状态回答。
+设备上下文中的 inspecting 为 true 表示本次通讯从该设备窗口打开。为 false 时，玩家可能只是在同一房间提问，设备字段是保留的操作记录，不能据此说玩家正在查看设备。
+出现 currentState.gauge 时，玩家在问走廊压差表或检定便签。只能选择 reply。mode 为 zero 表示校零，reference 表示验收测试。校零时正偏移用减号，负偏移用加号。检修盒在设备走廊左侧、靠近通往值班室的门，玩家须亲手调查磨损便签。根据 noteFound 和 tested 提示按便签逐档测试或补测跳过的档位，指导玩家向 ECHO 汇报相邻的通过档和拒绝档或推得的压差上限。不要报出上限或未测试档位的结果。验收测试用于找上限，两条通道的实测来自扫描。
+出现 currentState.photo 时，玩家在问档案室连拍。只能选择 reply。frame 是当前放大的帧号，null 表示还未放大。第一帧内门仍有门缝，第二和第三帧内门已关严。玩家问当前照片里的门是否开着时，依据 frame 回答。结合 frame 和 attempted 提示玩家比较背景面板，说明内门关严、已发送请求、收到回执的区别。不要指出正确帧号；玩家需要亲手点选回执，并在合照面板提交它能证明的撤离条件。
+出现 currentState.microscope 时，玩家在问显微镜。只能选择 reply。结合 violet、aligned、focused、lastCount、collected 给当前一步的提示。未对齐时提示移动计数框到金色角标所在区域。对齐并调清边缘后，只统计计数框内的实心亮点，空心光圈和框外亮点排除。可以解释玩家描述的现象，但不要确认或给出正确读数和颗粒阈值；由玩家提交读数，显微镜负责判定并记录。
+回答前先区分玩家问的是含义、当前状态还是过去的经过。只问物件用途或线索细节时，围绕该问题回答。玩家询问位置、走法、目标或下一步时再提供主线指引。只问含义时只解释含义。问当前状态时，先读取 currentState 中对应的值；true、false 都是明确的值。历史仅用于理解指代或补充状态未覆盖的背景。旧回复或提问中的旧前提与本轮状态冲突时，按本轮状态回答。
 问过去的经过或先后顺序时，参考 progressTimeline。atMs 是开局后的毫秒数，同一时间按数组顺序；changes 是变化后的字段值，room 是房间标识。缺少记录时说明无法确认。`;
   const messages = [
     {role: 'system', content: systemPrompt + '\n' + ECHO_STATE_GUIDE + contextInstructions},
@@ -354,6 +520,7 @@ async function handleEcho({request, response, locale, fail}, configOnly = false)
     }
     break;
   }
+  if ((asksAboutMicroscope || asksAboutPhoto || asksAboutGauge) && typeof decision?.reply === 'string') decision = replyOnly(decision.reply);
   respondToDecision(response, fail, decision, snapshot, messages, message, requestMode, verification, locale);
 }
 

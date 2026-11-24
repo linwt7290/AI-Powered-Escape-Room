@@ -52,11 +52,12 @@ export const ROOM_PROPS = {
   intercom: {room: 'control', x: 106, y: 119, anchor: 83, frame: [95, 91, 22, 17], label: '试用广播台', title: '广播台'},
   photo: {room: 'archive', x: 349, y: 131, anchor: 74, frame: [335, 101, 29, 20], label: '查看合影', title: '研究组合影'},
   coffee: {room: 'duty', x: 123, y: 143, anchor: 100, frame: [111, 113, 27, 20], label: '使用咖啡机', title: '咖啡机'},
-  lights: {room: 'service', x: 358, y: 139, anchor: 93, frame: [345, 111, 26, 16], label: '操作走廊灯', title: '照明面板'}
+  lights: {room: 'service', x: 358, y: 139, anchor: 93, frame: [345, 111, 26, 16], label: '检查走廊面板', title: '照明与压差面板'}
 };
 export const PROP_BY_ROOM = Object.fromEntries(Object.entries(ROOM_PROPS).map(([id, prop]) => [prop.room, id]));
 
 export const OBJECTS = {
+  inspectionBox: {room: 'service', x: 132, y: 188, anchor: 159, frame: [119, 167, 26, 17], label: '检查检修盒', title: '检修盒'},
   card: {room: 'research', x: 108, y: 153, anchor: 113, frame: [103, 121, 13, 9], label: '拾取工作证'},
   journal: {room: 'research', x: 153, y: 153, anchor: 112, frame: [143, 116, 20, 16], label: '阅读研究日志'},
   rack: {room: 'archive', x: 87, y: 77, anchor: 29, frame: [67, 30, 36, 46], label: '读取机柜存档'},

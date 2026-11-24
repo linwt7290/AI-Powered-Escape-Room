@@ -47,12 +47,30 @@ export function canControlAirlock(airlock, action) {
   }
 }
 
+export function routeRejectionMessage({selectedRoute, routeFailure}) {
+  const reason = {
+    pressure: '压差超限', particles: '颗粒指数超限', interlock: '通道联锁无响应，未达到撤离标准'
+  }[routeFailure];
+  return phrase('{route} 通道撤离中止：{reason}。请退出缓冲舱并重新选择路线。', {
+    route: selectedRoute, reason
+  });
+}
+
 function transferPower(state, locale) {
   const airlock = state.airlock;
   airlock.schedule = null;
   if (airlock.phase !== 'closed') {
     airlock.phase = 'rejected';
     return translate(locale, '联锁拒绝切电。内门还没关严，外门保持锁定。请退出缓冲舱后重试。');
+  }
+  if (state.selectedRoute && state.routeFailure) {
+    state.routeRejected = true;
+    airlock.phase = 'rejected';
+    return translate(locale, routeRejectionMessage(state));
+  }
+  if (state.selectedRoute) {
+    state.route = state.selectedRoute;
+    state.passageSafe = true;
   }
   airlock.phase = 'open';
   state.unlocked = true;
@@ -84,8 +102,14 @@ export function finishClosing(state, locale = DEFAULT_LOCALE) {
   return translate(locale, '内门已关严，现场联锁指示灯变绿。');
 }
 
-export function leaveChamber(airlock, locale = DEFAULT_LOCALE) {
+export function leaveChamber(airlock, locale = DEFAULT_LOCALE, state) {
   if (airlock.phase === 'outside' || airlock.phase === 'open') return;
+  if (state?.routeRejected) {
+    state.routeRejected = false;
+    state.selectedRoute = null;
+    state.routeFailure = null;
+    airlock.authorized = false;
+  }
   airlock.phase = 'outside';
   airlock.schedule = null;
   return translate(locale, '已退回实验室，缓冲舱已复位。');

@@ -2,6 +2,7 @@ import {phrase} from '../shared/i18n.mjs';
 import {applyLanguage, locale, localText, t} from './ui-language.mjs';
 import {canEchoAct, currentObjective, initialState, SCAN_ACTIONS, SCAN_FIELDS} from '../shared/rules.mjs';
 import {DOORS, EXIT, HEIGHT, move, nearbyObject, nextDoor, OBJECTS, PASSAGE_LANES, PROP_BY_ROOM, ROOMS, SPAWN, WIDTH} from '../shared/room.mjs';
+import {PASSAGE_STANDARDS} from '../shared/passage-standards.mjs';
 import {createRoomProps} from './room-props.mjs';
 import {createPainter, drawEcho, drawTitleScene} from './pixel-art.mjs';
 import {createCase, EXPERIMENTS, FLOW_RESULT, incidentReport, LOG_CLUE, RACK_CLUE} from '../shared/puzzles.mjs';
@@ -53,6 +54,7 @@ const portrait = byId('echoPortrait');
 const quickActions = [
   {label: '恢复机柜存档', text: '请恢复机柜存档。', actions: ['recover_archive']},
   {label: '请 ECHO 选择扫描对象', text: '请选择一条待查通道进行扫描。', actions: Object.values(SCAN_ACTIONS)},
+  {label: '扫描两条通道', text: '请扫描 A 和 B 两条通道。', actions: ['scan_route_both']},
   {label: '扫描 A 通道', text: '请扫描 A 通道。', actions: [SCAN_ACTIONS.A]},
   {label: '扫描 B 通道', text: '请扫描 B 通道。', actions: [SCAN_ACTIONS.B]}
 ].map(({label, text, actions}) => {
@@ -122,9 +124,16 @@ for (const [name, marker] of Object.entries(markers)) {
 }
 for (const sign of doorSigns) pin(sign, ...DOORS[sign.dataset.roomDoor].label);
 
-const devices = createDevices(() => state, setMessage, render);
-const airlockPanel = createAirlockPanel(() => state, publishAirlockEvent);
-const roomProps = createRoomProps(openPanel, render);
+const devices = createDevices(() => state, setMessage, render, () => {
+  passage.close();
+  openEcho({airlock: true});
+});
+const airlockPanel = createAirlockPanel(() => state, publishAirlockEvent, () => {
+  chat.close();
+  render();
+  openPanel(passage);
+});
+const roomProps = createRoomProps(openPanel, render, () => state.standards, prop => openEcho({airlock: false, prop}));
 localText(byId('journalClue'), LOG_CLUE);
 
 function setMessage(message) {
@@ -153,8 +162,9 @@ function renderComms() {
   chat.dataset.phase = state.unlocked ? 'granted' : pending ? 'busy' : 'idle';
   byId('send').disabled = Boolean(pending) || !chatInput.value.trim();
   chatInput.readOnly = Boolean(pending);
+  const clueConsole = ['microscope', 'photo', 'lights'].includes(chat.dataset.console);
   for (const {button, actions} of quickActions) {
-    button.hidden = !actions.some(action => canEchoAct(state, action) &&
+    button.hidden = clueConsole || !actions.some(action => canEchoAct(state, action) &&
       (showScanActions || !action.startsWith('scan_route_')));
     button.disabled = Boolean(pending);
   }
@@ -252,7 +262,14 @@ function render() {
   localText(byId('doorLabel'), state.escaped ? '已撤离' : state.unlocked ? '出口已解锁'
     : state.airlock.authorized ? '撤离已授权' : '出口锁定');
   byId('cardSlot').disabled = !state.card || state.escaped;
-  const hasEvidence = state.journal || state.rack || state.reportConfirmed || state.coolingRestored || roomProps.active.shiftLog;
+  const standards = Object.entries(PASSAGE_STANDARDS).filter(([id]) => state.standards[id]);
+  byId('passageEvidence').hidden = !standards.length;
+  byId('recordedStandards').replaceChildren(...standards.map(([, clue]) => {
+    const item = document.createElement('li');
+    localText(item, clue.reading);
+    return item;
+  }));
+  const hasEvidence = Boolean(standards.length) || state.journal || state.rack || state.reportConfirmed || state.coolingRestored || roomProps.active.shiftLog;
   byId('journalSlot').disabled = !hasEvidence || state.escaped;
   for (const button of evidenceButtons) button.disabled = byId('journalSlot').disabled;
   byId('journalEvidence').hidden = !state.journal;
@@ -542,15 +559,16 @@ function publishAirlockEvent(outcome) {
   addTurn('device', outcome);
   setMessage(outcome);
   if (lastEchoTrace) {
-    lastEchoTrace.deviceEvents.push({outcome: t(outcome), stateAfter: structuredClone(state)});
+    lastEchoTrace.deviceEvents.push({outcome: outcome ? t(outcome) : '', stateAfter: structuredClone(state)});
     byId('echoTrace').textContent = JSON.stringify(lastEchoTrace, null, 2);
   }
   render();
 }
 
-function openEcho({airlock = player.room === 'exit' && state.airlock.authorized && !state.unlocked} = {}) {
+function openEcho({airlock = player.room === 'exit' && state.airlock.authorized && !state.unlocked, prop} = {}) {
   if (state.escaped) return;
-  chat.dataset.console = airlock ? 'airlock' : 'comms';
+  chat.dataset.console = prop ?? (airlock ? 'airlock' : 'comms');
+  renderComms();
   airlockPanel.render();
   openPanel(chat);
   conversation.scrollTop = conversation.scrollHeight;
@@ -573,9 +591,16 @@ for (const id of ['recoverArchive', 'askAlignment', 'askScan']) {
   });
 }
 chat.addEventListener('close', () => {
-  if (chat.open || chat.dataset.console !== 'airlock') return;
+  if (chat.open) return;
+  const prop = chat.dataset.console;
+  if (prop === 'microscope' || prop === 'photo' || prop === 'lights') {
+    chat.dataset.console = 'comms';
+    if (!gameScreen.hidden && player.room === OBJECTS[prop].room) roomProps.open(prop);
+    return;
+  }
+  if (chat.dataset.console !== 'airlock') return;
   chat.dataset.console = 'comms';
-  const outcome = leaveChamber(state.airlock, locale());
+  const outcome = leaveChamber(state.airlock, locale(), state);
   if (outcome) publishAirlockEvent(outcome);
 });
 chatInput.addEventListener('input', renderComms);
@@ -613,6 +638,10 @@ function applyEchoAction({action, row, column}) {
       : '撤离已授权。前往撤离区，操作 {route} 通道的缓冲舱。', {route: state.route});
   }
   if (Object.values(AIRLOCK_ACTIONS).includes(action)) return applyAirlockAction(state, action, locale());
+  if (action === 'scan_route_both') {
+    state.scannedA = state.scannedB = true;
+    return 'A、B 通道扫描完成，读数已上传至出口检测台。';
+  }
   const route = Object.keys(SCAN_ACTIONS).find(name => SCAN_ACTIONS[name] === action);
   if (route) {
     state[SCAN_FIELDS[route]] = true;
@@ -633,6 +662,9 @@ byId('chatForm').addEventListener('submit', async event => {
     progressTimeline: progressTimeline.slice(), evacuationEvidence,
     incident: {kind: incident.kind, preferredScan: incident.preferredScan, safeRoute: incident.safeRoute}
   };
+  if (player.room === 'service') payload.state.gauge = {...roomProps.gaugeContext(), inspecting: chat.dataset.console === 'lights'};
+  if (player.room === 'archive') payload.state.photo = {...roomProps.photoContext(), inspecting: chat.dataset.console === 'photo'};
+  if (player.room === 'research') payload.state.microscope = {...roomProps.microscopeContext(), inspecting: chat.dataset.console === 'microscope'};
   const turn = addTurn('user', message);
   chatInput.value = '';
   setChatStatus('ECHO 正在核验…');
@@ -648,12 +680,14 @@ byId('chatForm').addEventListener('submit', async event => {
     history.push({role: 'user', content: message}, {role: 'assistant', content: decision.reply});
     addTurn('assistant', decision.reply);
 
-    const outcome = applyEchoAction(decision);
-    if (decision.action !== 'reply') {
+    const outcome = result.pressureCriterionVerified
+      ? roomProps.recordGaugeCriterion()
+      : applyEchoAction(decision);
+    if (outcome && (decision.action !== 'reply' || result.pressureCriterionVerified)) {
       addTurn('device', outcome);
       setMessage(outcome);
     }
-    lastEchoTrace = {mode, input: payload, messages, decision, outcome: t(outcome), stateAfter: structuredClone(state), deviceEvents: []};
+    lastEchoTrace = {mode, input: payload, messages, decision, outcome: outcome ? t(outcome) : '', stateAfter: structuredClone(state), deviceEvents: []};
     byId('echoTrace').textContent = JSON.stringify(lastEchoTrace, null, 2);
     setChatStatus();
     render();

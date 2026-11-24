@@ -1,7 +1,8 @@
 import {phrase} from '../shared/i18n.mjs';
 import {locale, localText, t} from './ui-language.mjs';
-import {alignNextPipe, describePassageCheck, FLOW_RESULT, GRID_SIZE, pipeFault, PRESSURE_LIMIT, PARTICLE_LIMIT, rotatePipe, safePassage, traceCircuit} from '../shared/puzzles.mjs';
-import {canEchoAct, SCAN_FIELDS} from '../shared/rules.mjs';
+import {alignNextPipe, FLOW_RESULT, GRID_SIZE, passageFailures, pipeFault, rotatePipe, traceCircuit} from '../shared/puzzles.mjs';
+import {missingPassageStandards, PASSAGE_STANDARDS} from '../shared/passage-standards.mjs';
+import {canEchoAct, confirmPassage, SCAN_FIELDS} from '../shared/rules.mjs';
 
 const byId = id => document.getElementById(id);
 const directions = ['北', '东', '南', '西'];
@@ -12,7 +13,7 @@ export function describeRouteReadings({pressure, particles, interlock}) {
   });
 }
 
-export function createDevices(getState, feedback, render) {
+export function createDevices(getState, feedback, render, openChamber) {
   const grid = byId('pipeGrid');
   const circuit = byId('circuit');
   const test = byId('testPipes');
@@ -20,6 +21,8 @@ export function createDevices(getState, feedback, render) {
   const routeForm = byId('passageForm');
   const routeOptions = byId('routeOptions');
   const submit = byId('submitRoute');
+  const launch = byId('launchEvacuation');
+  let candidateRoute;
   let incident;
   let tiles;
   let trial;
@@ -65,6 +68,7 @@ export function createDevices(getState, feedback, render) {
   }
 
   function drawRoutes() {
+    candidateRoute = undefined;
     routeOptions.replaceChildren();
     for (const name of Object.keys(incident.routes)) {
       const label = document.createElement('label');
@@ -93,19 +97,55 @@ export function createDevices(getState, feedback, render) {
     localText(byId('pressureReading'), state.coolingFaultRow
       ? phrase('ECHO 检测到第 {row} 行掉压。', {row: state.coolingFaultRow}) : '执行一次试压以获取读数。');
     byId('pressureReading').hidden = state.coolingRestored;
-    byId('askScan').hidden = !state.coolingRestored || state.passageSafe || (state.scannedA && state.scannedB);
-    routeForm.hidden = !state.coolingRestored;
+    const pendingScans = Object.keys(SCAN_FIELDS).filter(route => !state[SCAN_FIELDS[route]]);
+    const missing = missingPassageStandards(state.standards);
+    byId('askScan').hidden = !state.coolingRestored || state.passageSafe || (!pendingScans.length && !missing.length);
+    localText(byId('askScan'), pendingScans.length ? '联系 ECHO 扫描' : '向 ECHO 查询缺失标准');
+    routeForm.hidden = byId('evacuationControls').hidden = !state.coolingRestored;
     localText(byId('passageInstructions'), state.coolingRestored
-      ? phrase('选择同时符合三项标准的通道。压差不高于 {pressure}，颗粒指数不高于 {particles}，门锁联锁必须响应。', {pressure: PRESSURE_LIMIT, particles: PARTICLE_LIMIT})
+      ? '选择已扫描的通道，核验已知项目并暂存路线。'
       : '检测台等待稳定冷却。恢复后，请 ECHO 扫描并上传通道读数。');
+    const standards = state.standards;
+    byId('passageStandards').replaceChildren(...Object.entries(PASSAGE_STANDARDS).map(([id, clue]) => {
+      const item = document.createElement('li');
+      localText(item, standards[id] ? clue.reading : clue.location);
+      return item;
+    }));
     for (const radio of routeOptions.querySelectorAll('input')) {
       const scanned = state[SCAN_FIELDS[radio.value]];
       radio.disabled = !scanned;
       const readings = incident.routes[radio.value];
       localText(radio.parentElement.querySelector('[data-reading]'), scanned ? describeRouteReadings(readings) : '等待 ECHO 扫描');
     }
-    localText(submit, state.passageSafe ? '核验通道读数' : '登记检测结果');
-    submit.disabled = !new FormData(routeForm).get('route');
+    const selected = new FormData(routeForm).get('route');
+    submit.disabled = !selected;
+    launch.disabled = !candidateRoute || selected !== candidateRoute || Boolean(pendingScans.length || missing.length) ||
+      state.airlock.authorized;
+    const blockers = [
+      ...pendingScans.map(route => phrase('等待扫描 {route} 通道。', {route})),
+      ...missing.map(id => PASSAGE_STANDARDS[id].location)
+    ];
+    if (!candidateRoute || selected !== candidateRoute) blockers.push('请先核验并暂存所选路线。');
+    byId('evacuationBlockers').replaceChildren(...blockers.map(message => {
+      const item = document.createElement('li');
+      localText(item, message);
+      return item;
+    }));
+    byId('evacuationBlockers').hidden = !blockers.length;
+
+    const results = byId('routeVerification');
+    results.hidden = !candidateRoute;
+    if (candidateRoute) {
+      localText(byId('routeCandidate'), phrase('已暂存 {route} 通道', {route: candidateRoute}));
+      const failures = passageFailures(incident.routes[candidateRoute]);
+      const criteria = {lights: ['压差', 'pressure'], microscope: ['颗粒指数', 'particles'], photo: ['门锁联锁', 'interlock']};
+      byId('routeVerificationItems').replaceChildren(...Object.entries(criteria).map(([id, [name, metric]]) => {
+        const result = !standards[id] ? '标准待查' : failures.includes(metric) ? '不符合' : '符合';
+        const item = document.createElement('li');
+        localText(item, phrase('{name}：{result}', {name, result}));
+        return item;
+      }));
+    }
   }
 
   restart.addEventListener('click', () => {
@@ -131,28 +171,23 @@ export function createDevices(getState, feedback, render) {
     render();
   });
 
-  routeForm.addEventListener('change', () => {
-    submit.disabled = !new FormData(routeForm).get('route');
-  });
+  routeForm.addEventListener('change', renderDevices);
   routeForm.addEventListener('submit', event => {
     event.preventDefault();
     const state = getState();
     const route = new FormData(routeForm).get('route');
-    if (!state.coolingRestored || !Object.hasOwn(incident.routes, route) || !state[SCAN_FIELDS[route]]) return;
-    if (state.passageSafe) {
-      notice('passageNotice', describePassageCheck(route, incident.routes[route]), !safePassage(incident.routes[route]));
-      return;
-    }
-    if (!safePassage(incident.routes[route])) {
-      state.rejectedRoute = route;
-      notice('passageNotice', '登记被拒绝。请逐项比对压差、颗粒指数和联锁。', true);
-      render();
-      return;
-    }
-    state.passageSafe = true;
-    state.route = route;
-    notice('passageNotice', phrase('{route} 通道通过检测。用实测结果向 ECHO 申请撤离。', {route}));
-    feedback(phrase('{route} 通道通过检测。按 Q 联系 ECHO。', {route}));
+    if (!state.coolingRestored || !Object.hasOwn(SCAN_FIELDS, route) || !state[SCAN_FIELDS[route]]) return;
+    candidateRoute = route;
+    renderDevices();
+  });
+
+  launch.addEventListener('click', () => {
+    const state = getState();
+    const route = new FormData(routeForm).get('route');
+    if (!candidateRoute || route !== candidateRoute) return;
+    if (confirmPassage(state, incident.routes, route) !== 'confirmed') return;
+    feedback(phrase('已确认 {route} 通道。请操作缓冲舱。', {route}));
+    openChamber();
     render();
   });
 
@@ -209,7 +244,6 @@ export function createDevices(getState, feedback, render) {
       restoreTiles();
       drawRoutes();
       submit.disabled = true;
-      notice('passageNotice');
-    }
+      }
   };
 }

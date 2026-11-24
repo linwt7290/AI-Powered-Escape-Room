@@ -585,6 +585,14 @@ function drawRoomProp(ctx, prop, x, y, active, time = 0) {
         rect(ctx, '#9fa8a1', 10, -7 - (rise + 3) % 8, 1, 2);
       }
       break;
+    case 'inspectionBox':
+      panel(ctx, -13, -1, 26, 17, '#39454a', '#ac8259');
+      rect(ctx, '#816449', -11, 1, 22, 4);
+      rect(ctx, '#ba976a', -10, 6, 20, 1);
+      rect(ctx, '#e7c784', -3, 5, 6, 5);
+      rect(ctx, '#685135', -1, 6, 2, 2);
+      rect(ctx, '#cbb89a', 6, 9, 4, 3);
+      break;
     case 'lights':
       panel(ctx, -12, -7, 24, 14, '#25373d', '#78867d');
       rect(ctx, '#14252c', -9, -4, 18, 8);
@@ -712,6 +720,10 @@ export function createPainter(canvas) {
     if (prop) {
       const {x, y} = ROOM_PROPS[prop];
       drawRoomProp(ctx, prop, x, y - 20, props[prop], time);
+    }
+    if (room === 'service') {
+      const {x, y} = OBJECTS.inspectionBox;
+      drawRoomProp(ctx, 'inspectionBox', x, y - 20);
     }
     if (room === 'exit') drawDoor(ctx, opening, state.unlocked ? state.route : null);
     if (room === 'research' && !state.card) {

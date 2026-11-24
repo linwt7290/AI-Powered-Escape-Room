@@ -752,3 +752,56 @@ kbd {
   .door-status { max-width: 102px; white-space: normal; }
   .panel .button { white-space: normal; }
 }
+
+[data-photo-frame][aria-pressed="true"] { border-color: var(--mint); background: #183531; }
+
+.photo-strip { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; margin-block: 8px; }
+.photo-strip .button { display: grid; gap: 3px; padding: 3px; min-width: 0; }
+.photo-strip canvas, .photo-blowup canvas { display: block; width: 100%; height: auto; image-rendering: pixelated; }
+.photo-blowup { position: relative; margin-bottom: 8px; border: 1px solid #526a75; }
+.photo-blowup button { position: absolute; padding: 0; border: 1px dashed #e6eef080; background: transparent; cursor: pointer; }
+.photo-blowup button:is(:hover, :focus-visible) { outline: 2px solid var(--mint); }
+.photo-blowup button:disabled { cursor: default; }
+#photoDoorEvidence { inset: 22% auto auto 10%; width: 44%; height: 57%; }
+#photoReceiptEvidence { inset: 32% auto auto 63%; width: 30%; height: 45%; }
+
+#photoConclusion { display: grid; gap: 8px; }
+#photoInterpretation { width: 100%; min-width: 0; min-height: 36px; }
+#photoConclusion button { justify-self: start; }
+
+#gaugeDial { display: block; width: 100%; height: auto; margin-block: 8px; image-rendering: pixelated; }
+#gaugeTestControls { margin-block: 8px; }
+#gaugeTestResults { margin-block: 8px; }
+#pressureGauge .button[aria-pressed="true"] { border-color: var(--mint); background: #183531; }
+
+#inspectionNote {
+  padding: 10px;
+  color: #3f3123;
+  background: radial-gradient(ellipse at 95% 85%, #b99b6b80, transparent 60%), #e5d2a5;
+  border: 1px solid #8e7551;
+  box-shadow: 3px 4px #0d171e;
+  clip-path: polygon(0 0, 97% 0, 100% 5%, 100% 91%, 96% 100%, 2% 98%, 0 92%);
+  font-size: 13px;
+  line-height: 1.5;
+}
+#inspectionNote p { margin: 6px 0 0; }
+.inspection-note-wear {
+  display: inline-block;
+  width: 30px;
+  height: 13px;
+  vertical-align: middle;
+  background: repeating-linear-gradient(160deg, #6c5a3b38 0 1px, transparent 1px 4px), #c7ac7970;
+  clip-path: polygon(4% 11%, 97% 0, 87% 27%, 100% 42%, 92% 91%, 12% 100%, 0 71%, 9% 46%, 0 29%);
+}
+
+#gaugeAdjustments { margin-top: 8px; }
+
+#microscopeCount { display: grid; gap: 8px; margin-block: 8px; }
+#microscopeMovement { margin-block: 12px 8px; }
+#particleCount { min-width: 0; margin: 0; padding: 0; border: 0; }
+#particleCount legend { padding: 0; margin-bottom: 8px; }
+.particle-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.particle-options label.button { position: relative; justify-self: stretch; justify-content: center; text-align: center; }
+.particle-options input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.particle-options label:has(:checked) { border-color: var(--mint); background: #183531; color: var(--mint); }
+.particle-options label:has(:focus-visible) { outline: 2px solid var(--mint); outline-offset: 3px; }

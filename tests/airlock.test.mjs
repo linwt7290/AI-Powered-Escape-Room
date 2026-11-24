@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {AIRLOCK_ACTIONS, airlockContext, applyAirlockAction, enterChamber, finishClosing, leaveChamber, validAirlock} from '../shared/airlock.mjs';
 import {demoDecision} from '../backend/demo-echo.mjs';
-import {canEchoAct, initialState, UNLOCK_REQUIREMENTS} from '../shared/rules.mjs';
+import {canEchoAct, confirmPassage, initialState, UNLOCK_REQUIREMENTS} from '../shared/rules.mjs';
 
 function authorizedState() {
   const state = initialState();
@@ -78,4 +78,42 @@ test('English demo accepts English evidence and distinguishes the two airlock ti
   assert.match(decision('Wait until the inner door is fully closed, then open the outer door.').reply, /offline/i);
   state.airlock.spare = state.airlock.sensor = true;
   assert.equal(decision('Wait until the inner door is fully closed, then open the outer door.').action, AIRLOCK_ACTIONS.afterClosing);
+});
+
+test('the selected route requires both scans and all criteria, then the outer interlock checks it', () => {
+  const state = initialState();
+  const routes = {
+    A: {pressure: 6, particles: 1, interlock: true},
+    B: {pressure: 4, particles: 2, interlock: true}
+  };
+  state.coolingRestored = state.scannedA = true;
+  assert.equal(confirmPassage(state, routes, 'A'), 'unavailable');
+  state.scannedB = true;
+  state.standards = {lights: true, photo: true};
+  assert.equal(confirmPassage(state, routes, 'B'), 'missing-standards');
+  assert.equal(state.airlock.authorized, false);
+
+  state.standards.microscope = true;
+  assert.equal(confirmPassage(state, routes, 'A'), 'confirmed');
+  enterChamber(state);
+  applyAirlockAction(state, AIRLOCK_ACTIONS.now);
+  leaveChamber(state.airlock, undefined, state);
+  assert.equal(state.selectedRoute, 'A');
+
+  enterChamber(state);
+  finishClosing(state);
+  assert.match(applyAirlockAction(state, AIRLOCK_ACTIONS.now), /压差超限/);
+  assert.equal(state.unlocked, false);
+  leaveChamber(state.airlock, undefined, state);
+  assert.equal(state.selectedRoute, null);
+  assert.equal(state.airlock.authorized, false);
+  assert.equal(state.standards.microscope, true);
+  assert.equal(state.scannedA && state.scannedB, true);
+
+  assert.equal(confirmPassage(state, routes, 'B'), 'confirmed');
+  enterChamber(state);
+  finishClosing(state);
+  applyAirlockAction(state, AIRLOCK_ACTIONS.now);
+  assert.equal(state.unlocked, true);
+  assert.equal(state.route, 'B');
 });
