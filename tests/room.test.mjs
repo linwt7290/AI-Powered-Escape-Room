@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {DOORS, EXIT, move, nearbyObject, nextDoor, OBJECTS, PASSAGE_LANES, ROOMS} from '../shared/room.mjs';
-import {currentObjective, initialState, pipeCoordinates} from '../shared/rules.mjs';
+import {currentObjective, initialState} from '../shared/rules.mjs';
 import {demoDecision} from '../backend/demo-echo.mjs';
 
 const opposites = {north: 'south', south: 'north', east: 'west', west: 'east'};
@@ -80,15 +80,14 @@ test('exterior access is restricted to the released lane in the evacuation room'
   while (player.y > EXIT.threshold) assert.equal(move(player, 0, -1, 'A'), true);
 });
 
-test('ECHO requires a reported position in the diagnosed row before requesting a bypass', () => {
+test('ECHO can bypass a diagnosed leak without reported coordinates', () => {
   const state = {...initialState(), card: true, journal: true, rack: true, archiveRecovered: true,
     identity: true, password: true, reportConfirmed: true, coupler: true};
   const decide = message => demoDecision(state, [], message, {kind: 'pressure'});
-  assert.equal(decide('请旁通第一行第一列。').action, 'reply');
+  assert.equal(decide('帮我解决掉压。').action, 'reply');
   state.coolingFaultRow = 1;
-  assert.equal(decide('请旁通第 2 行第 1 列。').action, 'reply');
-  assert.equal(decide('请旁通第 1 行。').action, 'reply');
-  assert.equal(decide('请旁通第一行第一列。').action, 'isolate_pipe');
-  assert.equal(decide('Please bypass row 1, column 2.').column, 2);
-  assert.equal(pipeCoordinates('请旁通第 11 行第 1 列。'), null);
+  assert.equal(decide('怎么修复掉压？').action, 'reply');
+  assert.equal(decide('帮我解决掉压。').action, 'isolate_pipe');
+  assert.equal(decide('改错').action, 'isolate_pipe');
+  assert.equal(decide('Please fix the leak.').action, 'isolate_pipe');
 });

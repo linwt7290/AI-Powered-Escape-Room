@@ -48,15 +48,6 @@ export function validPipeNumber(value) {
   return Number.isInteger(value) && value >= 1 && value <= GRID_SIZE;
 }
 
-export function pipeCoordinates(message) {
-  const normalized = message.normalize('NFKC');
-  const match = normalized.match(/(?<![0-9一二三四])([1-4一二三四])\s*行\s*(?:,\s*)?第?\s*([1-4一二三四])\s*列/)
-    ?? normalized.match(/\brow\s+([1-4])\s*(?:,\s*)?(?:col(?:umn)?\.?)\s+([1-4])\b/i);
-  if (!match) return null;
-  const indexOfNumber = value => Number(value) || '一二三四'.indexOf(value) + 1;
-  return {row: indexOfNumber(match[1]), column: indexOfNumber(match[2])};
-}
-
 export function currentObjective(state) {
   if (state.escaped) return {label: '撤离完成'};
   if (state.unlocked) return {label: phrase('从 {route} 通道撤离', {route: state.route}), target: 'lane'};

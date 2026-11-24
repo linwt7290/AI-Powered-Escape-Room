@@ -531,6 +531,7 @@ kbd {
 .panel-notice[data-error="true"], .chat-status[data-error="true"] { color: var(--red); }
 
 .device-body { display: grid; gap: 14px; }
+#coolingDialog:has(#circuit:not([hidden])) { margin-block: 5dvh auto; }
 .device-hint { color: #c2d7d8; font-size: 14px; }
 .circuit {
   width: min(100%, 304px);

@@ -16,6 +16,7 @@ const titleScreen = byId('titleScreen');
 const gameScreen = byId('gameScreen');
 const intro = byId('introDialog');
 const panels = [...document.querySelectorAll('dialog')];
+const coolingDialog = byId('coolingDialog');
 const markers = Object.fromEntries(
   Array.from(document.querySelectorAll('[data-marker]'), element => [element.dataset.marker, element])
 );
@@ -291,8 +292,8 @@ function clearMovement() {
   player.moving = false;
 }
 
-function openPanel(panel) {
-  if (panels.some(item => item.open)) return;
+function openPanel(panel, underlyingPanel) {
+  if (panels.some(item => item.open && item !== underlyingPanel)) return;
   clearMovement();
   panel.showModal();
 }
@@ -454,7 +455,7 @@ const actions = {
     openPanel(terminal);
   },
   cooling() {
-    openPanel(byId('coolingDialog'));
+    openPanel(coolingDialog);
   },
   exit() {
     if (state.airlock.authorized) openEcho({airlock: true});
@@ -546,16 +547,16 @@ function publishAirlockEvent(outcome) {
 }
 
 function openEcho({airlock = player.room === 'exit' && state.airlock.authorized && !state.unlocked} = {}) {
-  if (state.escaped) return;
+  if (state.escaped || chat.open) return;
   chat.dataset.console = airlock ? 'airlock' : 'comms';
   airlockPanel.render();
-  openPanel(chat);
+  openPanel(chat, coolingDialog);
   conversation.scrollTop = conversation.scrollHeight;
   if (desktopPointer.matches && !pending && !airlock) chatInput.focus();
 }
 
 byId('openEcho').addEventListener('click', () => openEcho());
-for (const id of ['recoverArchive', 'askAlignment', 'askScan']) {
+for (const id of ['recoverArchive', 'askScan']) {
   byId(id).addEventListener('click', event => {
     const source = event.currentTarget.closest('dialog');
     if (source === chat) {
@@ -595,14 +596,14 @@ async function checkConnection() {
   renderComms();
 }
 
-function applyEchoAction({action, row, column}) {
+function applyEchoAction({action}, coolingTrial) {
   if (!canEchoAct(state, action)) return '设备状态已变化，请重新请求。';
   if (action === 'recover_archive') {
     state.archiveRecovered = true;
     return '机柜时序记录已恢复。打开调查记录，与研究日志核对。';
   }
   if (action === 'align_pipe') return devices.align();
-  if (action === 'isolate_pipe') return devices.isolate(row, column);
+  if (action === 'isolate_pipe') return devices.isolate(coolingTrial);
   if (action === 'request_unlock') {
     state.airlock.authorized = true;
     return phrase('撤离已授权。前往撤离区，操作 {route} 通道的缓冲舱。', {route: state.route});
@@ -623,6 +624,7 @@ byId('chatForm').addEventListener('submit', async event => {
   const controller = new AbortController();
   pending = controller;
   const requested = echoSettings;
+  const coolingTrial = devices.coolingTrial;
   const payload = {
     state: structuredClone(state), room: player.room, history: history.slice(-10), message,
     progressTimeline: progressTimeline.slice(),
@@ -641,7 +643,7 @@ byId('chatForm').addEventListener('submit', async event => {
     history.push({role: 'user', content: message}, {role: 'assistant', content: decision.reply});
     addTurn('assistant', decision.reply);
 
-    const outcome = applyEchoAction(decision);
+    const outcome = applyEchoAction(decision, coolingTrial);
     if (decision.action !== 'reply') {
       addTurn('device', outcome);
       setMessage(outcome);
@@ -677,8 +679,14 @@ window.visualViewport?.addEventListener('resize', syncViewport);
 window.visualViewport?.addEventListener('scroll', syncViewport);
 
 window.addEventListener('keydown', event => {
-  if (gameScreen.hidden || event.ctrlKey || event.altKey || event.metaKey || event.isComposing || panels.some(panel => panel.open)) return;
+  if (gameScreen.hidden || event.ctrlKey || event.altKey || event.metaKey || event.isComposing) return;
   if (event.target instanceof Element && event.target.closest('input, textarea, [contenteditable]')) return;
+  if (event.code === 'KeyQ' && !event.repeat && !panels.some(panel => panel.open && panel !== coolingDialog)) {
+    event.preventDefault();
+    openEcho();
+    return;
+  }
+  if (panels.some(panel => panel.open)) return;
   const direction = keys.get(event.code);
   if (direction) {
     event.preventDefault();
@@ -687,10 +695,6 @@ window.addEventListener('keydown', event => {
   }
   if (event.repeat) return;
   if (event.code === 'KeyE') interact();
-  if (event.code === 'KeyQ') {
-    event.preventDefault();
-    openEcho();
-  }
 });
 window.addEventListener('keyup', event => pressed.delete(event.code));
 window.addEventListener('blur', clearMovement);

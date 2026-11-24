@@ -89,7 +89,6 @@ export function createDevices(getState, feedback, render) {
       : !state.reportConfirmed ? '设备停机。先在安全终端查阅事故报告。'
         : !state.coupler ? '耦合器缺失。到维修柜取件后返回这里。'
           : '耦合器已装入。旋转管段，让左上入口与右下出口连通，再执行试压。');
-    byId('askAlignment').hidden = !canEchoAct(state, 'isolate_pipe');
     localText(byId('pressureReading'), state.coolingFaultRow
       ? phrase('ECHO 检测到第 {row} 行掉压。', {row: state.coolingFaultRow}) : '执行一次试压以获取读数。');
     byId('pressureReading').hidden = state.coolingRestored;
@@ -124,7 +123,7 @@ export function createDevices(getState, feedback, render) {
     } else {
       trial.fault = pipeFault(tiles);
       state.coolingFaultRow = Math.floor(trial.fault / GRID_SIZE) + 1;
-      notice('coolingNotice', '试压未通过。检查标红的接头。可以手动旋转，也可以把行列报给 ECHO，请它旁通漏点。', true);
+      notice('coolingNotice', '试压未通过。可以手动旋转标红的接头，或按 Q 请 ECHO 旁通漏点。', true);
     }
     renderPipes();
     render();
@@ -154,16 +153,19 @@ export function createDevices(getState, feedback, render) {
   return {
     render: renderDevices,
     refreshLanguage: renderPipes,
-    isolate(row, column) {
-      const index = (row - 1) * GRID_SIZE + column - 1;
-      if (!canEchoAct(getState(), 'isolate_pipe') || trial?.fault !== index) {
-        return '该接头和现场漏点不符。请核对标红的行列后重试。';
+    get coolingTrial() { return trial; },
+    isolate(requestTrial) {
+      const index = trial?.fault;
+      if (!canEchoAct(getState(), 'isolate_pipe') || index === undefined || trial !== requestTrial) {
+        return '试压结果已变化，请根据当前读数重新请求。';
       }
       alignNextPipe(tiles);
       bypasses.set(index, tiles[index]);
       getState().coolingFaultRow = null;
       trial = undefined;
-      const result = phrase('已旁通第 {row} 行第 {column} 列的接头。请重新试压。', {row, column});
+      const result = phrase('已旁通第 {row} 行第 {column} 列的接头。请重新试压。', {
+        row: Math.floor(index / GRID_SIZE) + 1, column: index % GRID_SIZE + 1
+      });
       notice('coolingNotice', result);
       renderPipes();
       return result;
