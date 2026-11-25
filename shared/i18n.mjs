@@ -2,6 +2,20 @@ export const DEFAULT_LOCALE = 'zh-CN';
 export const LOCALES = [DEFAULT_LOCALE, 'en'];
 
 const english = {
+  '你问的是安全终端密码，还是维修柜备件格密码？': 'Do you mean the security terminal password or the spare-parts compartment password?',
+  '看维修柜贴纸和调查记录，按实验发生顺序，从最后一次到第一次读取四个实验编号。': 'Check the cabinet label and investigation notes. Read the four experiment IDs in reverse chronological order, from the last experiment to the first.',
+  '已取得门位传感器。进舱前可安装。': 'Door sensor collected. You can install it before entering.',
+  '已取得门位传感器，尚未安装。可观察现场联锁灯，或退出缓冲舱并复位后安装。': 'Door sensor collected and awaiting installation. Check the interlock light, or step out and reset to install it.',
+  '传感器已取得但尚未安装。看现场联锁灯，亮绿灯后可以下令「现在切电」。想安装的话，先退出缓冲舱并复位。': 'You have the sensor. It still needs to be installed. Check the interlock light and say “switch power now” once it turns green. To install the sensor, step out and reset first.',
+  '门位传感器已安装并上线，可以请我等内门关严后再切电。': 'The door sensor is installed and online. You can ask me to wait until the inner door seals before transferring power.',
+  '先点击「退出缓冲舱并复位」。': 'First select “Step out and reset.”',
+  '传感器已取得。在进舱前，点击缓冲舱面板上的「安装门位传感器」。': 'You have the sensor. Select “Install door sensor” on the airlock panel before entering.',
+  '传感器已取得。启动撤离后，在进舱前用缓冲舱面板安装。': 'You have the sensor. After starting evacuation, install it from the airlock panel before entering.',
+  '备用门位传感器在维修间的维修柜备件格。': 'The spare door sensor is in the service cabinet’s spare-parts compartment in the maintenance room.',
+  '收到你的现场观察。确认绿灯后，可以对我说「现在切电」。': 'I have your report. Once you see the green light, tell me “switch power now.”',
+  '门位传感器离线。请看现场联锁灯。绿灯亮后，对我说「现在切电」。': 'The door sensor is offline. Check the interlock light. When it turns green, tell me “switch power now.”',
+  '传感器确认内门已关严。可以对我说「现在切电」。': 'The sensor confirms the inner door is sealed. You can tell me “switch power now.”',
+  '传感器显示内门正在关闭。你可以让我等关严后再切电。': 'The sensor shows the inner door is closing. You can ask me to wait until it seals before transferring power.',
   '去设备走廊的照明与压差面板。先校零，再查看左上角检修盒的便签，按便签逐档测试。': 'Go to the lighting and pressure panel in the service corridor. Zero the gauge, check the note in the upper-left service box, then follow it to test each step.',
   '查通道扫描的压差读数，去撤离区的出口检测台。找压差验收标准，去设备走廊的照明与压差面板。': 'For scanned pressure readings, use the exit inspection console. For the acceptance criterion, use the lighting and pressure panel in the service corridor.',
   '安全终端的密码已经验证通过。': 'The security terminal password has already been accepted.',

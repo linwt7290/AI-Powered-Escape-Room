@@ -36,7 +36,10 @@ export function createAirlockPanel(getState, publish, returnToDetection) {
     localText(byId('outerDoorState'), outerOpen ? '已打开' : '锁定');
     localText(byId('airlockSensor'), sensor
       ? '门位传感器在线。ECHO 能读取内门状态。'
-      : '门位传感器离线。现场联锁灯仍可观察，备件可在维修柜取得。');
+      : spare
+        ? phase === 'outside' ? '已取得门位传感器。进舱前可安装。'
+          : '已取得门位传感器，尚未安装。可观察现场联锁灯，或退出缓冲舱并复位后安装。'
+        : '门位传感器离线。现场联锁灯仍可观察，备件可在维修柜取得。');
     byId('airlockDoorDisplay').dataset.phase = phase;
     const doorStatus = byId('airlockDoorStatus');
     localText(doorStatus, routeRejected ? '红灯 · 通道验收未通过' : doorLabels[phase]);

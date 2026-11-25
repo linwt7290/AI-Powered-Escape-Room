@@ -18,6 +18,7 @@ const gameScreen = byId('gameScreen');
 const intro = byId('introDialog');
 const panels = [...document.querySelectorAll('dialog')];
 const coolingDialog = byId('coolingDialog');
+const sparesDialog = byId('sparesDialog');
 const markers = Object.fromEntries(
   Array.from(document.querySelectorAll('[data-marker]'), element => [element.dataset.marker, element])
 );
@@ -588,10 +589,11 @@ function publishAirlockEvent(outcome) {
 
 function openEcho({airlock = player.room === 'exit' && state.airlock.authorized && !state.unlocked, prop} = {}) {
   if (state.escaped || chat.open) return;
-  chat.dataset.console = prop ?? (airlock ? 'airlock' : 'comms');
+  const passwordPanel = sparesDialog.open ? 'spares' : terminal.open ? 'terminal' : undefined;
+  chat.dataset.console = prop ?? passwordPanel ?? (airlock ? 'airlock' : 'comms');
   renderComms();
   airlockPanel.render();
-  openPanel(chat, coolingDialog);
+  openPanel(chat, passwordPanel === 'spares' ? sparesDialog : passwordPanel === 'terminal' ? terminal : coolingDialog);
   conversation.scrollTop = conversation.scrollHeight;
   if (desktopPointer.matches && !pending && !airlock) chatInput.focus();
 }
@@ -683,6 +685,7 @@ byId('chatForm').addEventListener('submit', async event => {
   const payload = {
     state: {...structuredClone(state), routeReady: devices.routeReady}, room: player.room, history: history.slice(-10), message,
     progressTimeline: progressTimeline.slice(), evacuationEvidence,
+    ...(['spares', 'terminal'].includes(chat.dataset.console) && {passwordPanel: chat.dataset.console}),
     ...(confirmingPressure && {intent: 'confirm_pressure_criterion'}),
     incident: {kind: incident.kind, preferredScan: incident.preferredScan, safeRoute: incident.safeRoute}
   };
@@ -743,13 +746,15 @@ window.visualViewport?.addEventListener('scroll', syncViewport);
 
 window.addEventListener('keydown', event => {
   if (gameScreen.hidden || event.ctrlKey || event.altKey || event.metaKey || event.isComposing) return;
-  if (event.target instanceof Element && event.target.closest('input, textarea, [contenteditable]')) return;
-  if (event.code === 'KeyQ' && !event.repeat && !panels.some(panel => panel.open && panel !== coolingDialog)) {
+  const passwordPanelOpen = terminal.open || sparesDialog.open;
+  const editing = event.target instanceof Element && event.target.closest('input, textarea, [contenteditable]');
+  if (event.code === 'KeyQ' && !event.repeat && (!editing || passwordPanelOpen) &&
+      !panels.some(panel => panel.open && ![coolingDialog, terminal, sparesDialog].includes(panel))) {
     event.preventDefault();
     openEcho();
     return;
   }
-  if (panels.some(panel => panel.open)) return;
+  if (editing || panels.some(panel => panel.open)) return;
   const direction = keys.get(event.code);
   if (direction) {
     event.preventDefault();

@@ -27,8 +27,8 @@ export const ECHO_STATE_GUIDE = `游戏状态字段说明：布尔值 true 表�
 - airlock.authorized：已获得缓冲舱撤离授权。
 - airlock.sensorOnline：缓冲舱内门传感器已安装并在线。
 - airlock.inChamber：玩家当前在缓冲舱内。
-- airlock.innerDoorClosed：true 表示传感器确认内门关严，false 表示在线传感器尚未确认内门关严，null 表示传感器离线，现场状态见 display。
-- airlock.display：现场面板的内门是否关严 innerClosed、外门是否打开 outerOpen 和联锁灯 light。
+- airlock.innerDoorClosed：true 表示传感器确认内门关严，false 表示在线传感器尚未确认内门关严，null 表示传感器离线，需请玩家观察现场面板。
+- airlock.display：外门状态 outerOpen；内门关严状态 innerClosed 和联锁灯 light 仅在设备有对应读数时可用。phase 为 in_chamber 时，玩家在舱内且门位传感器离线。
 - airlock.interlockRejected：当前缓冲舱联锁已拒绝切电。
 - airlock.schedule：已登记的自动切电指令。open_outer_on_entry 表示进舱时切电，open_outer_after_inner_closed 表示确认内门关严后切电，null 表示没有预约。
 - unlocked：撤离出口的外门已打开。escaped：玩家已经走出出口，完成撤离。

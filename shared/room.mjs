@@ -7,6 +7,9 @@ export const PASSAGE_LANES = {
   B: {left: 403, right: 426, center: 414}
 };
 
+const inspectionBoxFrame = [63, 71, 26, 17];
+const [inspectionX, inspectionY, inspectionWidth, inspectionHeight] = inspectionBoxFrame;
+
 export const ROOMS = {
   research: {name: '研究室', position: [1, 2], doors: {east: 'control', south: 'duty'}, furniture: [
     {left: 64, right: 180, top: 110, bottom: 149},
@@ -34,6 +37,7 @@ export const ROOMS = {
     {left: 313, right: 376, top: 198, bottom: 232}
   ]},
   service: {name: '设备走廊', position: [2, 3], doors: {west: 'duty', north: 'control'}, furniture: [
+    {left: inspectionX, right: inspectionX + inspectionWidth, top: inspectionY, bottom: inspectionY + inspectionHeight},
     {left: 302, right: 412, top: 96, bottom: 130},
     {left: 329, right: 395, top: 193, bottom: 226}
   ]}
@@ -64,7 +68,7 @@ export const REPORT_FRAGMENTS = {
 };
 
 export const OBJECTS = {
-  inspectionBox: {room: 'service', x: 76, y: 92, anchor: 64, frame: [63, 71, 26, 17], label: '检查检修盒', title: '检修盒'},
+  inspectionBox: {room: 'service', x: 76, y: 92, anchor: 64, frame: inspectionBoxFrame, label: '检查检修盒', title: '检修盒'},
   card: {room: 'research', x: 108, y: 153, anchor: 113, frame: [103, 121, 13, 9], label: '拾取工作证'},
   journal: {room: 'research', x: 153, y: 153, anchor: 112, frame: [143, 116, 20, 16], label: '阅读研究日志'},
   rack: {room: 'archive', x: 87, y: 77, anchor: 29, frame: [67, 30, 36, 46], label: '读取机柜存档'},

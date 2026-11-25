@@ -107,3 +107,10 @@ test('report fragments become collectible after the password and then lead back 
   assert.equal(currentObjective(state).target, 'terminal');
   assert.equal(state.reportConfirmed, false);
 });
+
+test('the service corridor inspection box blocks movement and remains reachable', () => {
+  const player = {room: 'service', x: 76, y: 89};
+  assert.equal(move(player, 0, -2), false);
+  assert.equal(nearbyObject(player, initialState()), 'inspectionBox');
+  assert.equal(move(player, 0, 2), true);
+});

@@ -58,7 +58,7 @@ const instructions = `你是密室游戏的中央 AI ECHO。以系统给出的�
 研究室有工作证与研究日志，控制室有安全终端，档案室有机柜存档，维修间有备用冷却与备件柜，撤离区有检测台。location 是玩家所在的房间。有需要时按这张门牌图引路：${roomLayout}。
 放行核验只认服务端给出的 evacuationMissing。请求放行或补报证据时，若有缺项，只引导去对应设备查找并汇报：封锁原因去控制室的事故报告，备用冷却去维修间看试压结果，达标通道去出口检测台看登记结果。询问证据出处时只给查找位置，不复述谜题答案或让玩家照抄。三项齐备且 availableActions 含 request_unlock 时，玩家提出申请或补齐证据可选择该动作。
 通道问题使用 passage 的阈值和已扫描读数。问为何登记被拒时，结合 rejectedRoute 或玩家明确提到的通道解释失败项。只有已扫描的通道才有读数。单问所在位置时只答位置；同时问目标或方向时，依据 objective、objectiveRoom 和 objectiveDirection 补充下一步走法；airlock.inChamber 为 true 时可具体到缓冲舱。外门已开后问下一步，提示关闭面板、沿绿灯撤离。
-状态含 airlock 时，request_unlock 只签发缓冲舱授权，外门仍关闭。授权后，你能切换门控电源，备用电源一次只能供一道门。open_outer_on_entry 表示玩家明确要求一进舱就切电；open_outer_after_inner_closed 表示明确要求等内门关严或联锁灯变绿后再切电，且该动作需要传感器在线。open_outer_now 表示玩家明确要求立刻切电，或已给出等待条件且传感器确认 innerDoorClosed=true。保留玩家指定的触发时机。只谈「怎么」或「为什么」、询问日志、未要求执行或时机有歧义时只回复。对于「怎么打开外门？」之类的宽泛求助，如果玩家还没有提到日志、联锁失败、内门或指示灯，只引导去读检测台旁的旧门控日志，不透露正确指示灯颜色和切电条件。玩家引用具体线索或描述试验结果后，可以解释它。innerDoorClosed=null 仅表示没有传感器读数。现场内门、外门和联锁灯以 airlock.display 为准。传感器离线时无法登记自动等待内门关严。可以由玩家观察现场指示灯后要求立即切电。若玩家要求「进舱就切电」，登记其指令，是否被联锁拒绝以设备回执为准。
+状态含 airlock 时，request_unlock 只签发缓冲舱授权，外门仍关闭。授权后，你能切换门控电源，备用电源一次只能供一道门。open_outer_on_entry 表示玩家明确要求一进舱就切电；open_outer_after_inner_closed 表示明确要求等内门关严或联锁灯变绿后再切电，且该动作需要传感器在线。open_outer_now 表示玩家明确要求立刻切电，或已给出等待条件且传感器确认 innerDoorClosed=true。保留玩家指定的触发时机。只谈「怎么」或「为什么」、询问日志、未要求执行或时机有歧义时只回复。对于「怎么打开外门？」之类的宽泛求助，如果玩家还没有提到日志、联锁失败、内门或指示灯，只引导去读检测台旁的旧门控日志，不透露正确指示灯颜色和切电条件。玩家引用具体线索或描述试验结果后，可以解释它。innerDoorClosed=null 仅表示没有传感器读数。现场面板由玩家观察。传感器离线时，你无法自行读取内门或联锁灯状态，也无法登记自动等待内门关严。玩家明确报告绿灯或内门关严时，可以提示其明确下令切电。可以由玩家观察现场指示灯后要求立即切电。若玩家要求「进舱就切电」，登记其指令，是否被联锁拒绝以设备回执为准。
 备用冷却试压失败时，coolingFaultRow 是掉压行。如果 availableActions 含 isolate_pipe，且玩家本轮要求修复掉压、改错、隔离或旁通漏点，就返回 isolate_pipe。设备会旁通本次试压标红的接头，无需玩家提供行列。询问原因或修复方法时只回复。设备回执负责确认执行结果。
 只输出一个 JSON 对象，包含 reply（简短回复）、action（从 availableActions 选择一项）和 verification_passed（action 为 request_unlock 时为 true，其余为 false）。
 只有选择了对应的定时动作才可以说已登记。传感器离线时，对等待内门关严的请求直接说明无法登记自动切电，再提示可由玩家现场观察后发出立即切电的指令。
@@ -136,7 +136,7 @@ async function handleEcho({request, response, locale, fail}, configOnly = false)
   let input;
   try { input = JSON.parse(body); }
   catch { return fail(400, '无法读取对话请求。'); }
-  const {state, history, message, intent, incident, room, echoSettings, progressTimeline, evacuationEvidence = []} = input ?? {};
+  const {state, history, message, intent, incident, room, passwordPanel, echoSettings, progressTimeline, evacuationEvidence = []} = input ?? {};
   const effective = resolveEchoSettings(echoSettings);
   if (effective.error) return fail(effective.status, effective.error);
   const {mode: requestMode, model} = effective;
@@ -172,7 +172,7 @@ async function handleEcho({request, response, locale, fail}, configOnly = false)
   }
 
   return dispatchEcho({response, fail, locale, state, history, message, intent, incident, room,
-    progressTimeline, evacuationEvidence, requestMode, model});
+    passwordPanel, progressTimeline, evacuationEvidence, requestMode, model});
 }
 
 const airlockCommands = {
@@ -186,10 +186,11 @@ const scanIntents = {scan_a: 'A', scan_b: 'B', scan_other: 'other', scan_any: 'a
 const intentInstructions = `
 额外返回 intent 字段，用以下枚举判断本轮意图。根据玩家原话和对话理解省略与指代。游戏状态只用于判断上下文，不能当作玩家授权。
 - next_step：询问现在该做什么；main_step：明确问主线而非手上的支线；evacuation_blocked：询问为什么无法启动撤离。
-- terminal_password：询问安全终端密码是多少或如何推导，即使提到报告也按密码解谜求助处理。
+- terminal_password：明确询问安全终端密码或其推导。spares_password：明确询问维修柜备件格密码。只问密码而指代不明时使用 password_help。
 - incident_report：询问如何查看事故报告、找回残页、拼接或确认已阅。询问事故原因或报告内容属于自由对话。
 - clue_progress：问还缺哪些撤离验收线索；readings_location：问去哪里查看通道扫描实测读数。询问压差验收标准或上限线索与查询扫描读数是两回事。
 - scan_a、scan_b、scan_both、scan_other、scan_any：明确要求扫描指定通道、两条、另一条或任意一条。询问如何扫描、读数或后果不算执行请求。
+- sensor_location：询问备用门位传感器在哪里、如何取得或在哪里安装。
 - airlock_status：询问当前缓冲舱门、联锁灯或门位传感器状态。
 - airlock_now、airlock_on_entry、airlock_after_close：明确要求现在、进舱时、内门关严后切电。条件必须来自玩家指令。
 - airlock_unclear：明确要操作外门但未说明时机，或操作时机有歧义。询问怎么开、讨论假设、否定操作都不能归到执行意图。
@@ -198,7 +199,7 @@ const intentInstructions = `
 
 async function dispatchEcho(params, recognizedIntent, modelDecision) {
   const {response, fail, locale, state, history, message, intent, incident, room,
-    progressTimeline, evacuationEvidence, requestMode, model} = params;
+    passwordPanel, progressTimeline, evacuationEvidence, requestMode, model} = params;
   const snapshot = {...Object.fromEntries(ECHO_FIELDS.map(field => [field, state[field]])), route: state.route ?? null};
   if (state.airlock) snapshot.airlock = state.airlock;
   if (Object.hasOwn(state, 'coolingFaultRow')) snapshot.coolingFaultRow = state.coolingFaultRow;
@@ -271,11 +272,33 @@ async function dispatchEcho(params, recognizedIntent, modelDecision) {
     decision: {...replyOnly(finishedClue ? translate(locale, finishedClue) + ' ' + reply : reply), action}, messages: null, mode: requestMode,
     evacuationEvidence: verification.evidence, offerScan, ...(pressureCriterionVerified && {pressureCriterionVerified})
   });
-  const asksTerminalPassword = recognizedIntent === 'terminal_password' ||
-    /密码|passcode|password/i.test(message) &&
-    !/备件|维修柜|spare|service cabinet|locker/i.test(message) &&
-    !/残页|事故报告|incident report/i.test(message);
-  if (asksTerminalPassword && (!snapshot.password || recognizedIntent === 'terminal_password')) {
+  const passwordMention = /密码|passcode|password/i;
+  const passwordSubject = text => {
+    const spares = /备件格|维修柜|传感器|spare|service cabinet|locker/i.test(text);
+    const terminal = /安全终端|终端|security terminal/i.test(text);
+    if (spares === terminal) return undefined;
+    return spares ? 'spares' : 'terminal';
+  };
+  const explicitPasswordSubject = passwordSubject(message);
+  const passwordIntent = ['terminal_password', 'spares_password', 'password_help'].includes(recognizedIntent);
+  const answersPasswordClarification = explicitPasswordSubject &&
+    /^(?:安全终端|终端|维修柜|备件格|维修柜备件格|(?:the )?(?:security terminal|locker|spare[- ]parts compartment))[。.!！]*$/i.test(message.trim()) &&
+    history.at(-1)?.role === 'assistant' &&
+    history.at(-1).content === translate(locale, '你问的是安全终端密码，还是维修柜备件格密码？');
+  if (passwordIntent || answersPasswordClarification || (passwordMention.test(message) &&
+      (explicitPasswordSubject || !/残页|事故报告|incident report/i.test(message)))) {
+    const activePanel = room === 'control' && passwordPanel === 'terminal' ? 'terminal'
+      : room === 'maintenance' && passwordPanel === 'spares' ? 'spares' : undefined;
+    const recentSubject = history.slice(-4).reverse()
+      .filter(turn => /密码|passcode|password|备件格|spare[- ]parts/i.test(turn.content))
+      .map(turn => passwordSubject(turn.content)).find(Boolean);
+    const subject = explicitPasswordSubject ?? activePanel ?? recentSubject ??
+      (recognizedIntent === 'spares_password' ? 'spares'
+        : recognizedIntent === 'terminal_password' ? 'terminal' : undefined);
+    if (!subject) return answer(translate(locale, '你问的是安全终端密码，还是维修柜备件格密码？'));
+    if (subject === 'spares') {
+      return answer(translate(locale, '看维修柜贴纸和调查记录，按实验发生顺序，从最后一次到第一次读取四个实验编号。'));
+    }
     const hint = snapshot.password ? '安全终端的密码已经验证通过。'
       : !snapshot.journal ? '查阅研究室桌上的日志，记录实验编号和先后关系。'
         : !snapshot.rack ? '从控制室北门进入档案室，读取机柜存档。它记录了另一组实验的先后关系。'
@@ -300,30 +323,54 @@ async function dispatchEcho(params, recognizedIntent, modelDecision) {
   if (recognizedIntent === 'airlock_unclear' && context.airlock?.authorized) {
     return answer(translate(locale, '请说明切电时机：现在、进舱时，还是等内门关严后？'));
   }
-  if (recognizedIntent === 'airlock_status' && context.airlock?.authorized) {
+  const asksSensorLocation = recognizedIntent === 'sensor_location' ||
+    /传感器|\bsensor\b/i.test(message) &&
+    /哪|怎么(?:拿|取|找|安装|获得)|如何(?:拿|取|找|安装|获得)|where|how (?:do I |can I |to )?(?:get|find|install)/i.test(message);
+  if (asksSensorLocation && snapshot.airlock) {
+    const {spare, sensor, phase, authorized} = snapshot.airlock;
+    if (sensor) return answer(translate(locale, '门位传感器已安装并上线，可以请我等内门关严后再切电。'));
+    const reset = ['closing', 'closed', 'rejected'].includes(phase) && !state.routeRejected
+      ? translate(locale, '先点击「退出缓冲舱并复位」。') : '';
+    if (spare) {
+      const install = authorized
+        ? '传感器已取得。在进舱前，点击缓冲舱面板上的「安装门位传感器」。'
+        : '传感器已取得。启动撤离后，在进舱前用缓冲舱面板安装。';
+      return answer([reset, translate(locale, install)].filter(Boolean).join(' '));
+    }
+    const hint = translate(locale, '备用门位传感器在维修间的维修柜备件格。');
+    const door = room && nextDoor(room, OBJECTS.locker.room);
+    const path = door ? translate(locale, phrase('先从{direction}进入{room}。', {
+      direction: directionNames[door], room: ROOMS[ROOMS[room].doors[door]].name
+    })) : '';
+    return answer([reset, hint, path].filter(Boolean).join(' '));
+  }
+  const doorStatusQuestion = recognizedIntent === 'airlock_status' ||
+    /内门.*(?:吗|没关|关严了没|关好了没|是否|状态)|(?:is|has) the inner door.*(?:closed|sealed)/i.test(message);
+  const reportedSeal = /^(?:我(?:看到|确认))?(?:联锁灯(?:已经|已)?变绿(?:了)?|灯(?:已经|已)?绿了|绿灯(?:亮了)?|内门(?:已经|已)?关严(?:了)?)(?:[，,\s]+|(?=然后呢|接下来呢|下一步|[。！!]*$))(?:然后呢|接下来呢|下一步(?:呢|做什么)?)?[。！!？?]*$|^(?:i can see (?:that )?)?(?:the light is green|the inner door is (?:sealed|closed))(?:[,. ]+what next)?[.!]*$/i.test(message.trim());
+  if ((step || doorStatusQuestion || reportedSeal) && context.airlock?.authorized &&
+      (context.airlock.inChamber || doorStatusQuestion)) {
+    const {phase, schedule, sensorOnline} = context.airlock;
     const status = {
       outside: '撤离已授权，缓冲舱尚未进入。',
-      closing: '内门正在关闭。',
-      closed: '内门已关严，现场联锁指示灯变绿。',
-      rejected: '联锁拒绝，外门保持锁定。',
-      open: '外门已打开。关闭面板，沿绿灯撤离。'
-    };
-    return answer(translate(locale, status[context.airlock.phase]) + (context.airlock.sensorOnline ? '' :
-      ' ' + translate(locale, '门位传感器离线。')));
-  }
-  if (step && context.airlock?.inChamber) {
-    const {phase, schedule} = context.airlock;
-    const guidance = {
-      closing: schedule === AIRLOCK_ACTIONS.afterClosing
-        ? '自动切电已登记，等内门关严即可。'
-        : '等内门关严、联锁灯变绿。',
-      closed: '内门已关严，联锁灯是绿的。要开外门，可以对我说「现在切电」。',
       rejected: state.routeRejected
         ? '本次撤离失败，外门保持锁定。'
         : '联锁拒绝了这次操作。先退出缓冲舱并复位，再试一次。',
       open: context.escaped ? '你已完成撤离。' : '外门已打开。关闭面板，沿绿灯撤离。'
     };
-    return answer(translate(locale, guidance[phase]));
+    if (Object.hasOwn(status, phase)) return answer(translate(locale, status[phase]));
+    if (!sensorOnline) {
+      if (snapshot.airlock.spare && !reportedSeal) {
+        return answer(translate(locale, '传感器已取得但尚未安装。看现场联锁灯，亮绿灯后可以下令「现在切电」。想安装的话，先退出缓冲舱并复位。'));
+      }
+      return answer(translate(locale, reportedSeal
+        ? '收到你的现场观察。确认绿灯后，可以对我说「现在切电」。'
+        : '门位传感器离线。请看现场联锁灯。绿灯亮后，对我说「现在切电」。'));
+    }
+    return answer(translate(locale, phase === 'closed'
+      ? '传感器确认内门已关严。可以对我说「现在切电」。'
+      : schedule === AIRLOCK_ACTIONS.afterClosing
+        ? '自动切电已登记，等内门关严即可。'
+        : '传感器显示内门正在关闭。你可以让我等关严后再切电。'));
   }
 
   const consoleDirections = () => {
@@ -653,6 +700,10 @@ async function dispatchEcho(params, recognizedIntent, modelDecision) {
 reportFragmentRooms 是密码解锁后尚未拾取事故报告残页的房间。空列表表示应回安全终端拼接。拼好前引导玩家找回残页和还原报告，避免提前复述报告全文。
 回答前先区分玩家问的是含义、当前状态还是过去的经过。只问物件用途或线索细节时，围绕该问题回答。玩家询问位置、走法、目标或下一步时再提供主线指引。只问含义时只解释含义。问当前状态时，先读取 currentState 中对应的值；true、false 都是明确的值。历史仅用于理解指代或补充状态未覆盖的背景。旧回复或提问中的旧前提与本轮状态冲突时，按本轮状态回答。
 问过去的经过或先后顺序时，参考 progressTimeline。atMs 是开局后的毫秒数，同一时间按数组顺序；changes 是变化后的字段值，room 是房间标识。缺少记录时说明无法确认。`;
+  if (context.airlock?.inChamber && !context.airlock.sensorOnline &&
+      ['closing', 'closed'].includes(context.airlock.phase)) {
+    context.airlock = {...context.airlock, phase: 'in_chamber', display: {outerOpen: false}};
+  }
   const messages = [
     {role: 'system', content: responseInstructions + '\n' + ECHO_STATE_GUIDE + contextInstructions + intentInstructions},
     ...history.map(({role, content}) => ({
@@ -705,7 +756,7 @@ reportFragmentRooms 是密码解锁后尚未拾取事故报告残页的房间。
   }
   const modeledIntent = decision?.intent;
   if (['next_step', 'main_step', 'evacuation_blocked', 'clue_progress', 'readings_location',
-    'scan_both', 'airlock_status', 'airlock_unclear', 'incident_report', 'terminal_password'].includes(modeledIntent) ||
+    'scan_both', 'sensor_location', 'airlock_status', 'airlock_unclear', 'incident_report', 'terminal_password', 'spares_password', 'password_help'].includes(modeledIntent) ||
       Object.hasOwn(scanIntents, modeledIntent) || Object.hasOwn(airlockCommands, modeledIntent)) {
     return dispatchEcho(params, modeledIntent, decision);
   }
