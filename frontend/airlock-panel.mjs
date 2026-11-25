@@ -1,5 +1,6 @@
+import {phrase} from '../shared/i18n.mjs';
 import {locale, localText} from './ui-language.mjs';
-import {AIRLOCK_ACTIONS, enterChamber, finishClosing, leaveChamber} from '../shared/airlock.mjs';
+import {airlockDisplay, AIRLOCK_ACTIONS, enterChamber, finishClosing, leaveChamber, routeRejectionMessage} from '../shared/airlock.mjs';
 
 const byId = id => document.getElementById(id);
 const doorLabels = {
@@ -11,7 +12,7 @@ const doorLabels = {
 };
 const closingTime = 2200;
 
-export function createAirlockPanel(getState, publish) {
+export function createAirlockPanel(getState, publish, returnToDetection) {
   const sparesForm = byId('sparesForm');
   const sparesCode = byId('sparesCode');
   const sparesNotice = byId('sparesNotice');
@@ -21,25 +22,32 @@ export function createAirlockPanel(getState, publish) {
   function render() {
     const state = getState();
     const {authorized, phase, spare, sensor, schedule} = state.airlock;
+    byId('airlockRoute').hidden = !state.selectedRoute;
+    localText(byId('airlockRoute'), phrase('已选撤离路线：{route} 通道', {route: state.selectedRoute}));
+    byId('changeRoute').hidden = !state.selectedRoute || phase !== 'outside';
     byId('passageCheck').hidden = authorized;
     byId('airlockPanel').hidden = !authorized || byId('echoDialog').dataset.console !== 'airlock';
     byId('airlockLog').hidden = !authorized;
-    const innerClosed = phase === 'closed' || phase === 'open';
-    byId('innerDoor').dataset.state = innerClosed ? 'closed' : phase;
-    byId('outerDoor').dataset.state = phase === 'open' ? 'open' : 'locked';
-    localText(byId('innerDoorState'), innerClosed ? '已关严' : phase === 'closing' ? '关闭中' : phase === 'rejected' ? '未关严' : '待进入');
-    localText(byId('outerDoorState'), phase === 'open' ? '已打开' : '锁定');
+    const {innerClosed, outerOpen} = airlockDisplay(phase);
+    const routeRejected = phase === 'rejected' && state.routeRejected;
+    byId('innerDoor').dataset.state = innerClosed || routeRejected ? 'closed' : phase;
+    byId('outerDoor').dataset.state = outerOpen ? 'open' : 'locked';
+    localText(byId('innerDoorState'), innerClosed || routeRejected ? '已关严' : phase === 'closing' ? '关闭中' : phase === 'rejected' ? '未关严' : '待进入');
+    localText(byId('outerDoorState'), outerOpen ? '已打开' : '锁定');
     localText(byId('airlockSensor'), sensor
       ? '门位传感器在线。ECHO 能读取内门状态。'
       : '门位传感器离线。现场联锁灯仍可观察，备件可在维修柜取得。');
     byId('airlockDoorDisplay').dataset.phase = phase;
     const doorStatus = byId('airlockDoorStatus');
-    localText(doorStatus, doorLabels[phase]);
+    localText(doorStatus, routeRejected ? '红灯 · 通道验收未通过' : doorLabels[phase]);
+    const routeNotice = byId('airlockRouteNotice');
+    routeNotice.hidden = !routeRejected;
+    if (routeRejected) localText(routeNotice, routeRejectionMessage(state));
     const scheduleStatus = byId('airlockSchedule');
     scheduleStatus.hidden = !schedule;
     localText(scheduleStatus, schedule === AIRLOCK_ACTIONS.onEntry ? '已登记。进舱时切电。' : '已登记。等待内门关严。');
     byId('enterChamber').hidden = phase !== 'outside';
-    byId('leaveChamber').hidden = phase === 'outside' || phase === 'open';
+    byId('leaveChamber').hidden = routeRejected || phase === 'outside' || phase === 'open';
     byId('installSensor').hidden = !spare || sensor || phase !== 'outside';
     byId('airlockWalkOut').hidden = phase !== 'open';
     sparesForm.hidden = spare;
@@ -73,8 +81,18 @@ export function createAirlockPanel(getState, publish) {
     if (outcome) publish(outcome);
   });
 
+  byId('changeRoute').addEventListener('click', () => {
+    const state = getState();
+    if (!state.selectedRoute || state.airlock.phase !== 'outside') return;
+    state.selectedRoute = state.routeFailure = null;
+    state.airlock.schedule = null;
+    state.airlock.authorized = false;
+    returnToDetection();
+  });
+
   byId('leaveChamber').addEventListener('click', () => {
-    const outcome = leaveChamber(getState().airlock, locale());
+    const state = getState();
+    const outcome = leaveChamber(state.airlock, locale(), state);
     if (!outcome) return;
     closingDeadline = undefined;
     publish(outcome);

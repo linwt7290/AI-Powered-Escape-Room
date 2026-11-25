@@ -199,6 +199,10 @@
           <p class="inset" id="recoverySummary"></p>
           <div id="recoveryReadings"><p data-route-reading="A" hidden></p><p data-route-reading="B" hidden></p></div>
         </details>
+        <details id="passageEvidence" hidden>
+          <summary>通道验收标准</summary>
+          <ul id="recordedStandards"></ul>
+        </details>
         <details id="shiftEvidence" hidden>
           <summary>值班广播摘录</summary>
           <p class="inset">「上回人刚进去就切电，联锁又拦住了。」</p>
@@ -266,11 +270,20 @@
       <div id="passageCheck" class="device-body">
         <p id="passageInstructions" class="device-hint"></p>
         <button class="button device-assist" id="askScan" type="button" hidden>联系 ECHO 扫描</button>
+        <ul id="passageStandards" class="device-hint" aria-label="通道验收标准"></ul>
         <form id="passageForm" hidden>
-          <div id="routeOptions" class="route-options" role="group" aria-label="选择符合标准的通道"></div>
-          <button class="button primary" id="submitRoute" type="submit" disabled>登记检测结果</button>
+          <div id="routeOptions" class="route-options" role="group" aria-label="选择待核验通道"></div>
+          <button class="button primary" id="submitRoute" type="submit" disabled>核验并暂存路线</button>
         </form>
-        <p class="panel-notice" id="passageNotice" role="status" hidden></p>
+        <section id="routeVerification" aria-live="polite" hidden>
+          <strong id="routeCandidate"></strong>
+          <ul id="routeVerificationItems"></ul>
+        </section>
+        <div id="evacuationControls" hidden>
+          <button class="button primary" id="launchEvacuation" type="button" aria-describedby="evacuationBlockers" disabled>启动撤离</button>
+          <p class="device-hint">切电尝试放行时，若所选通道未达标，本局撤离失败。</p>
+          <ul id="evacuationBlockers" class="device-hint"></ul>
+        </div>
       </div>
     </div>
   </dialog>
@@ -302,12 +315,93 @@
     </header>
     <div class="panel-body">
       <canvas id="propPreview" width="96" height="48" aria-hidden="true"></canvas>
+      <article id="inspectionNote" aria-label="磨损的检定便签" hidden>
+        <strong>撤离压差检定</strong>
+        <p><span>上限</span> <span class="inspection-note-wear" role="img" aria-label="数字已磨损"></span></p>
+        <p>从第 3 档开始逐档升压。记录首次拒绝前的那一档。</p>
+      </article>
       <div class="prop-copy">
         <p id="propDescription"></p>
         <details class="airlock-log" id="propShiftLog" hidden>
           <summary>值班广播摘录</summary>
           <p>「上回人刚进去就切电，联锁又拦住了。」</p>
         </details>
+        <details class="airlock-log" id="pressureGauge" hidden>
+          <summary>检查压差表</summary>
+          <p id="gaugeInstructions"></p>
+          <canvas width="144" height="90" id="gaugeDial" role="img"></canvas>
+          <div class="device-actions">
+            <button class="button" type="button" id="gaugeZeroMode" aria-pressed="false">校零</button>
+            <button class="button" type="button" id="gaugeReferenceMode" aria-pressed="false" disabled>验收测试</button>
+          </div>
+          <div class="device-actions" id="gaugeAdjustments" hidden>
+            <button class="button" type="button" id="gaugeDecrease" aria-label="减小表针读数">−</button>
+            <button class="button" type="button" id="gaugeIncrease" aria-label="增大表针读数">+</button>
+            <button class="button" type="button" id="gaugeConfirmZero">确认校零</button>
+          </div>
+          <div id="gaugeTestControls" hidden>
+            <button class="button" type="button" id="gaugeRunTest">测试当前档</button>
+            <p id="gaugeTestResults" role="status"></p>
+          </div>
+          <p id="gaugeFeedback" class="panel-notice" role="status" hidden></p>
+        </details>
+        <details id="photoContactSheet" class="airlock-log" hidden>
+          <summary>翻看相框夹层</summary>
+          <p>放大照片，检查内门和联锁面板，找出联锁已经响应的证据。</p>
+          <div class="photo-strip" role="group" aria-label="试运行连拍">
+            <button class="button" type="button" data-photo-frame="0" aria-label="查看第 1 张连拍" aria-pressed="false"><canvas width="120" height="68" aria-hidden="true"></canvas></button>
+            <button class="button" type="button" data-photo-frame="1" aria-label="查看第 2 张连拍" aria-pressed="false"><canvas width="120" height="68" aria-hidden="true"></canvas></button>
+            <button class="button" type="button" data-photo-frame="2" aria-label="查看第 3 张连拍" aria-pressed="false"><canvas width="120" height="68" aria-hidden="true"></canvas></button>
+          </div>
+          <div class="photo-blowup" id="photoMonitor" role="group" aria-label="放大的试运行照片" hidden>
+            <canvas width="120" height="68" aria-hidden="true"></canvas>
+            <button type="button" id="photoDoorEvidence"></button>
+            <button type="button" id="photoReceiptEvidence"></button>
+          </div>
+          <p id="photoResult" class="panel-notice" role="status" hidden></p>
+          <form id="photoConclusion">
+            <fieldset id="photoJudgment">
+              <legend>这条回执说明撤离时必须确认什么？</legend>
+              <details id="photoChoices">
+                <summary class="button"><span id="photoSelectedChoice"></span></summary>
+                <div class="photo-options">
+                  <label class="button"><input type="radio" name="photoInterpretation" value="door" required><span>只要看到内门关严</span></label>
+                  <label class="button"><input type="radio" name="photoInterpretation" value="sent"><span>只要测试请求已经发出</span></label>
+                  <label class="button"><input type="radio" name="photoInterpretation" value="response"><span>必须收到门锁联锁的响应</span></label>
+                </div>
+              </details>
+            </fieldset>
+            <button class="button" type="submit" disabled>提交判断</button>
+          </form>
+        </details>
+        <div id="microscopeControls" hidden>
+          <p>撤离上限参照片：将计数框移到有金色角标的区域。对焦后，只数框内实心颗粒。</p>
+          <p id="microscopeView" role="status"></p>
+          <p class="visually-hidden" id="microscopeSampleDescription" aria-live="polite"></p>
+          <p class="visually-hidden" id="microscopeSampleContents" hidden></p>
+          <div class="device-actions" id="microscopeMovement" role="group" aria-label="移动计数框">
+            <button class="button" type="button" data-move-frame="up" aria-label="计数框上移">↑</button>
+            <button class="button" type="button" data-move-frame="down" aria-label="计数框下移">↓</button>
+            <button class="button" type="button" data-move-frame="left" aria-label="计数框左移">←</button>
+            <button class="button" type="button" data-move-frame="right" aria-label="计数框右移">→</button>
+          </div>
+          <div class="device-actions">
+            <button class="button" id="focusNear" type="button">近焦</button>
+            <button class="button" id="focusFar" type="button">远焦</button>
+          </div>
+          <form id="microscopeCount">
+            <fieldset id="particleCount">
+              <legend>框内颗粒数</legend>
+              <div class="particle-options">
+                <label class="button"><input type="radio" name="particleCount" value="1" required><span>1</span></label>
+                <label class="button"><input type="radio" name="particleCount" value="2"><span>2</span></label>
+                <label class="button"><input type="radio" name="particleCount" value="3"><span>3</span></label>
+              </div>
+            </fieldset>
+            <button class="button" id="submitParticleCount" type="submit">提交读数</button>
+          </form>
+          <p id="microscopeResult" class="panel-notice" role="status" hidden></p>
+        </div>
         <p id="propStatus" class="panel-notice" role="status" hidden></p>
         <button class="button primary" id="propAction" type="button" hidden></button>
       </div>
@@ -342,9 +436,12 @@
             <span id="airlockDoorStatus"></span>
           </div>
         </div>
+        <p class="device-hint" id="airlockRoute" hidden></p>
+        <p class="panel-notice" id="airlockRouteNotice" data-error="true" role="status" hidden></p>
         <p class="device-hint" id="airlockSensor"></p>
         <p id="airlockSchedule" class="device-hint" hidden></p>
         <div class="device-actions">
+          <button class="button" id="changeRoute" type="button" hidden>返回检测台改选路线</button>
           <button class="button primary" id="enterChamber" type="button">进入缓冲舱</button>
           <button class="button" id="leaveChamber" type="button" hidden>退出缓冲舱并复位</button>
           <button class="button" id="installSensor" type="button" hidden>安装门位传感器</button>

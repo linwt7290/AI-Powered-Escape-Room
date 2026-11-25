@@ -6,7 +6,8 @@ export const TIMELINE_LIMIT = 16;
 
 export function progressSnapshot(state, room) {
   const fields = Object.fromEntries(ECHO_FIELDS.map(field => [field, state[field]]));
-  const airlock = Object.fromEntries(Object.entries(airlockContext(state.airlock))
+  const {phase, display, ...timelineAirlock} = airlockContext(state.airlock);
+  const airlock = Object.fromEntries(Object.entries(timelineAirlock)
     .map(([field, value]) => ['airlock.' + field, value]));
   return {...fields, ...airlock, room, route: state.route, coolingFaultRow: state.coolingFaultRow};
 }

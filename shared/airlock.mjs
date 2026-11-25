@@ -20,8 +20,15 @@ export function validAirlock(airlock) {
     (!airlock.schedule || canControlAirlock(airlock, airlock.schedule));
 }
 
+export function airlockDisplay(phase) {
+  const innerClosed = phase === 'closed' || phase === 'open';
+  const light = {outside: null, closing: 'yellow', closed: 'green', rejected: 'red', open: 'green'}[phase];
+  return {innerClosed, outerOpen: phase === 'open', light};
+}
+
 export function airlockContext({authorized, phase, sensor, schedule}) {
   return {
+    phase, display: airlockDisplay(phase),
     authorized, sensorOnline: sensor, schedule,
     inChamber: phase !== 'outside',
     innerDoorClosed: sensor ? ['closed', 'open'].includes(phase) : null,
@@ -40,12 +47,30 @@ export function canControlAirlock(airlock, action) {
   }
 }
 
+export function routeRejectionMessage({selectedRoute, routeFailure}) {
+  const reason = {
+    pressure: '压差超限', particles: '颗粒指数超限', interlock: '通道联锁无响应，未达到撤离标准'
+  }[routeFailure];
+  return phrase('{route} 通道撤离失败：{reason}。外门保持锁定。', {
+    route: selectedRoute, reason
+  });
+}
+
 function transferPower(state, locale) {
   const airlock = state.airlock;
   airlock.schedule = null;
   if (airlock.phase !== 'closed') {
     airlock.phase = 'rejected';
     return translate(locale, '联锁拒绝切电。内门还没关严，外门保持锁定。请退出缓冲舱后重试。');
+  }
+  if (state.selectedRoute && state.routeFailure) {
+    state.routeRejected = true;
+    airlock.phase = 'rejected';
+    return translate(locale, routeRejectionMessage(state));
+  }
+  if (state.selectedRoute) {
+    state.route = state.selectedRoute;
+    state.passageSafe = true;
   }
   airlock.phase = 'open';
   state.unlocked = true;
@@ -77,8 +102,8 @@ export function finishClosing(state, locale = DEFAULT_LOCALE) {
   return translate(locale, '内门已关严，现场联锁指示灯变绿。');
 }
 
-export function leaveChamber(airlock, locale = DEFAULT_LOCALE) {
-  if (airlock.phase === 'outside' || airlock.phase === 'open') return;
+export function leaveChamber(airlock, locale = DEFAULT_LOCALE, state) {
+  if (state?.routeRejected || airlock.phase === 'outside' || airlock.phase === 'open') return;
   airlock.phase = 'outside';
   airlock.schedule = null;
   return translate(locale, '已退回实验室，缓冲舱已复位。');

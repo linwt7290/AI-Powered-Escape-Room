@@ -2,11 +2,12 @@ import {phrase} from '../shared/i18n.mjs';
 import {applyLanguage, locale, localText, t} from './ui-language.mjs';
 import {canEchoAct, currentObjective, initialState, SCAN_ACTIONS, SCAN_FIELDS} from '../shared/rules.mjs';
 import {DOORS, EXIT, HEIGHT, move, nearbyObject, nextDoor, OBJECTS, PASSAGE_LANES, PROP_BY_ROOM, ROOMS, SPAWN, WIDTH} from '../shared/room.mjs';
+import {hasPressureBoundary, PASSAGE_STANDARDS} from '../shared/passage-standards.mjs';
 import {createRoomProps} from './room-props.mjs';
 import {createPainter, drawEcho, drawTitleScene} from './pixel-art.mjs';
 import {createCase, EXPERIMENTS, FLOW_RESULT, incidentReport, LOG_CLUE, RACK_CLUE} from '../shared/puzzles.mjs';
 import {createDevices, describeRouteReadings} from './devices.mjs';
-import {AIRLOCK_ACTIONS, applyAirlockAction, leaveChamber} from '../shared/airlock.mjs';
+import {AIRLOCK_ACTIONS, applyAirlockAction, leaveChamber, routeRejectionMessage} from '../shared/airlock.mjs';
 import {createAirlockPanel} from './airlock-panel.mjs';
 import {checkEchoConfig, sendEchoMessage} from './echo/api.mjs';
 import {progressSnapshot, TIMELINE_LIMIT} from '../shared/progress-timeline.mjs';
@@ -51,9 +52,18 @@ const evidenceButtons = [...document.querySelectorAll('[data-evidence]')];
 const chatInput = byId('chatInput');
 const conversation = byId('conversation');
 const portrait = byId('echoPortrait');
+const confirmPressure = document.createElement('button');
+confirmPressure.className = 'button';
+confirmPressure.type = 'submit';
+confirmPressure.formNoValidate = true;
+confirmPressure.setAttribute('form', 'chatForm');
+confirmPressure.hidden = true;
+localText(confirmPressure, '向 ECHO 确认压差线索');
+byId('echoActions').append(confirmPressure);
 const quickActions = [
   {label: '恢复机柜存档', text: '请恢复机柜存档。', actions: ['recover_archive']},
   {label: '请 ECHO 选择扫描对象', text: '请选择一条待查通道进行扫描。', actions: Object.values(SCAN_ACTIONS)},
+  {label: '扫描两条通道', text: '请扫描 A 和 B 两条通道。', actions: ['scan_route_both']},
   {label: '扫描 A 通道', text: '请扫描 A 通道。', actions: [SCAN_ACTIONS.A]},
   {label: '扫描 B 通道', text: '请扫描 B 通道。', actions: [SCAN_ACTIONS.B]}
 ].map(({label, text, actions}) => {
@@ -98,6 +108,8 @@ let state = initialState();
 let incident;
 let player = {...SPAWN, facing: 'down', moving: false, pickupUntil: 0};
 let history = [];
+let evacuationEvidence = [];
+let showScanActions = false;
 const progressTimeline = [];
 let progressStartedAt = performance.now();
 let previousProgress = progressSnapshot(state, player.room);
@@ -121,9 +133,16 @@ for (const [name, marker] of Object.entries(markers)) {
 }
 for (const sign of doorSigns) pin(sign, ...DOORS[sign.dataset.roomDoor].label);
 
-const devices = createDevices(() => state, setMessage, render);
-const airlockPanel = createAirlockPanel(() => state, publishAirlockEvent);
-const roomProps = createRoomProps(openPanel, render);
+const devices = createDevices(() => state, setMessage, render, () => {
+  passage.close();
+  openEcho({airlock: true});
+});
+const airlockPanel = createAirlockPanel(() => state, publishAirlockEvent, () => {
+  chat.close();
+  render();
+  openPanel(passage);
+});
+const roomProps = createRoomProps(openPanel, render, () => state.standards, prop => openEcho({airlock: false, prop}));
 localText(byId('journalClue'), LOG_CLUE);
 
 function setMessage(message) {
@@ -152,11 +171,16 @@ function renderComms() {
   chat.dataset.phase = state.unlocked ? 'granted' : pending ? 'busy' : 'idle';
   byId('send').disabled = Boolean(pending) || !chatInput.value.trim();
   chatInput.readOnly = Boolean(pending);
+  const clueConsole = ['microscope', 'photo', 'lights'].includes(chat.dataset.console);
   for (const {button, actions} of quickActions) {
-    button.hidden = !actions.some(action => canEchoAct(state, action));
+    button.hidden = clueConsole || !actions.some(action => canEchoAct(state, action) &&
+      (showScanActions || !action.startsWith('scan_route_')));
     button.disabled = Boolean(pending);
   }
-  byId('echoActions').hidden = quickActions.every(({button}) => button.hidden);
+  confirmPressure.hidden = player.room !== 'service' || Boolean(state.standards.lights) ||
+    !hasPressureBoundary(roomProps.gaugeContext());
+  confirmPressure.disabled = Boolean(pending);
+  byId('echoActions').hidden = confirmPressure.hidden && quickActions.every(({button}) => button.hidden);
 }
 
 function renderTarget() {
@@ -250,7 +274,14 @@ function render() {
   localText(byId('doorLabel'), state.escaped ? '已撤离' : state.unlocked ? '出口已解锁'
     : state.airlock.authorized ? '撤离已授权' : '出口锁定');
   byId('cardSlot').disabled = !state.card || state.escaped;
-  const hasEvidence = state.journal || state.rack || state.reportConfirmed || state.coolingRestored || roomProps.active.shiftLog;
+  const standards = Object.entries(PASSAGE_STANDARDS).filter(([id]) => state.standards[id]);
+  byId('passageEvidence').hidden = !standards.length;
+  byId('recordedStandards').replaceChildren(...standards.map(([, clue]) => {
+    const item = document.createElement('li');
+    localText(item, clue.reading);
+    return item;
+  }));
+  const hasEvidence = Boolean(standards.length) || state.journal || state.rack || state.reportConfirmed || state.coolingRestored || roomProps.active.shiftLog;
   byId('journalSlot').disabled = !hasEvidence || state.escaped;
   for (const button of evidenceButtons) button.disabled = byId('journalSlot').disabled;
   byId('journalEvidence').hidden = !state.journal;
@@ -283,6 +314,15 @@ function render() {
   airlockPanel.render();
   renderComms();
   renderTarget();
+  if (state.routeRejected && !byId('endingDialog').open) {
+    chat.close();
+    localText(byId('endingTitle'), '撤离失败');
+    localText(byId('endingReport'), routeRejectionMessage(state));
+    byId('endingEcho').hidden = true;
+    byId('endingDialog').dataset.failed = 'true';
+    localText(byId('playAgain'), '重开一局');
+    openPanel(byId('endingDialog'));
+  }
 }
 
 function clearMovement() {
@@ -540,15 +580,16 @@ function publishAirlockEvent(outcome) {
   addTurn('device', outcome);
   setMessage(outcome);
   if (lastEchoTrace) {
-    lastEchoTrace.deviceEvents.push({outcome: t(outcome), stateAfter: structuredClone(state)});
+    lastEchoTrace.deviceEvents.push({outcome: outcome ? t(outcome) : '', stateAfter: structuredClone(state)});
     byId('echoTrace').textContent = JSON.stringify(lastEchoTrace, null, 2);
   }
   render();
 }
 
-function openEcho({airlock = player.room === 'exit' && state.airlock.authorized && !state.unlocked} = {}) {
+function openEcho({airlock = player.room === 'exit' && state.airlock.authorized && !state.unlocked, prop} = {}) {
   if (state.escaped || chat.open) return;
-  chat.dataset.console = airlock ? 'airlock' : 'comms';
+  chat.dataset.console = prop ?? (airlock ? 'airlock' : 'comms');
+  renderComms();
   airlockPanel.render();
   openPanel(chat, coolingDialog);
   conversation.scrollTop = conversation.scrollHeight;
@@ -571,9 +612,16 @@ for (const id of ['recoverArchive', 'askScan']) {
   });
 }
 chat.addEventListener('close', () => {
-  if (chat.open || chat.dataset.console !== 'airlock') return;
+  if (chat.open) return;
+  const prop = chat.dataset.console;
+  if (prop === 'microscope' || prop === 'photo' || prop === 'lights') {
+    chat.dataset.console = 'comms';
+    if (!gameScreen.hidden && player.room === OBJECTS[prop].room) roomProps.open(prop);
+    return;
+  }
+  if (chat.dataset.console !== 'airlock') return;
   chat.dataset.console = 'comms';
-  const outcome = leaveChamber(state.airlock, locale());
+  const outcome = leaveChamber(state.airlock, locale(), state);
   if (outcome) publishAirlockEvent(outcome);
 });
 chatInput.addEventListener('input', renderComms);
@@ -606,9 +654,15 @@ function applyEchoAction({action}, coolingTrial) {
   if (action === 'isolate_pipe') return devices.isolate(coolingTrial);
   if (action === 'request_unlock') {
     state.airlock.authorized = true;
-    return phrase('撤离已授权。前往撤离区，操作 {route} 通道的缓冲舱。', {route: state.route});
+    return phrase(player.room === 'exit'
+      ? '撤离已授权。请在检测台操作 {route} 通道的缓冲舱。'
+      : '撤离已授权。前往撤离区，操作 {route} 通道的缓冲舱。', {route: state.route});
   }
   if (Object.values(AIRLOCK_ACTIONS).includes(action)) return applyAirlockAction(state, action, locale());
+  if (action === 'scan_route_both') {
+    state.scannedA = state.scannedB = true;
+    return 'A、B 通道扫描完成，读数已上传至出口检测台。';
+  }
   const route = Object.keys(SCAN_ACTIONS).find(name => SCAN_ACTIONS[name] === action);
   if (route) {
     state[SCAN_FIELDS[route]] = true;
@@ -619,17 +673,22 @@ function applyEchoAction({action}, coolingTrial) {
 
 byId('chatForm').addEventListener('submit', async event => {
   event.preventDefault();
-  const message = chatInput.value.trim();
+  const confirmingPressure = event.submitter === confirmPressure;
+  const message = confirmingPressure ? t('确认压差线索') : chatInput.value.trim();
   if (!message || pending || state.escaped) return;
   const controller = new AbortController();
   pending = controller;
   const requested = echoSettings;
   const coolingTrial = devices.coolingTrial;
   const payload = {
-    state: structuredClone(state), room: player.room, history: history.slice(-10), message,
-    progressTimeline: progressTimeline.slice(),
-    incident: {kind: incident.kind, preferredScan: incident.preferredScan}
+    state: {...structuredClone(state), routeReady: devices.routeReady}, room: player.room, history: history.slice(-10), message,
+    progressTimeline: progressTimeline.slice(), evacuationEvidence,
+    ...(confirmingPressure && {intent: 'confirm_pressure_criterion'}),
+    incident: {kind: incident.kind, preferredScan: incident.preferredScan, safeRoute: incident.safeRoute}
   };
+  if (player.room === 'service') payload.state.gauge = {...roomProps.gaugeContext(), inspecting: chat.dataset.console === 'lights'};
+  if (player.room === 'archive') payload.state.photo = {...roomProps.photoContext(), inspecting: chat.dataset.console === 'photo'};
+  if (player.room === 'research') payload.state.microscope = {...roomProps.microscopeContext(), inspecting: chat.dataset.console === 'microscope'};
   const turn = addTurn('user', message);
   chatInput.value = '';
   setChatStatus('ECHO 正在核验…');
@@ -639,16 +698,20 @@ byId('chatForm').addEventListener('submit', async event => {
     if (pending !== controller) return;
     if (!ok) throw new Error(result.error);
     const {decision, messages, mode} = result;
+    evacuationEvidence = result.evacuationEvidence ?? [];
+    showScanActions ||= result.offerScan === true;
     if (requested === echoSettings) connection = mode === 'model' ? '模型在线' : modeLabels.demo;
     history.push({role: 'user', content: message}, {role: 'assistant', content: decision.reply});
     addTurn('assistant', decision.reply);
 
-    const outcome = applyEchoAction(decision, coolingTrial);
-    if (decision.action !== 'reply') {
+    const outcome = result.pressureCriterionVerified
+      ? roomProps.recordGaugeCriterion()
+      : applyEchoAction(decision, coolingTrial);
+    if (outcome && (decision.action !== 'reply' || result.pressureCriterionVerified)) {
       addTurn('device', outcome);
       setMessage(outcome);
     }
-    lastEchoTrace = {mode, input: payload, messages, decision, outcome: t(outcome), stateAfter: structuredClone(state), deviceEvents: []};
+    lastEchoTrace = {mode, input: payload, messages, decision, outcome: outcome ? t(outcome) : '', stateAfter: structuredClone(state), deviceEvents: []};
     byId('echoTrace').textContent = JSON.stringify(lastEchoTrace, null, 2);
     setChatStatus();
     render();
@@ -720,6 +783,9 @@ for (const button of document.querySelectorAll('[data-direction]')) {
 
 function escapeRoom() {
   state.escaped = true;
+  localText(byId('endingTitle'), '撤离完成');
+  localText(byId('playAgain'), '再玩一次');
+  byId('endingDialog').dataset.failed = 'false';
   setMessage('撤离完成。实验室已进入维护模式。');
   localText(byId('endingReport'), phrase('你经 {route} 通道撤离。备用冷却持续运行，实验室已进入维护模式。', {route: state.route}));
   render();
@@ -760,6 +826,8 @@ function reset() {
   progressStartedAt = performance.now();
   previousProgress = progressSnapshot(state, player.room);
   history = [];
+  evacuationEvidence = [];
+  showScanActions = false;
   nearest = undefined;
   opening = 0;
   code.value = '';
@@ -775,6 +843,9 @@ function reset() {
 }
 
 byId('reset').addEventListener('click', reset);
+byId('endingDialog').addEventListener('cancel', event => {
+  if (state.routeRejected) event.preventDefault();
+});
 byId('playAgain').addEventListener('click', reset);
 byId('startGame').addEventListener('click', () => openPanel(intro));
 byId('enterLab').addEventListener('click', () => {
