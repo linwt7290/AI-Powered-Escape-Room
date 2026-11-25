@@ -1,7 +1,7 @@
 import {phrase} from '../shared/i18n.mjs';
 import {hasPressureBoundary, PASSAGE_STANDARDS} from '../shared/passage-standards.mjs';
 import {PARTICLE_LIMIT, PRESSURE_LIMIT} from '../shared/puzzles.mjs';
-import {OBJECTS} from '../shared/room.mjs';
+import {OBJECTS, REPORT_FRAGMENTS, ROOMS} from '../shared/room.mjs';
 import {drawPropPreview} from './pixel-art.mjs';
 import {localText, t} from './ui-language.mjs';
 
@@ -556,6 +556,165 @@ export function createRoomProps(openPanel, onEvidenceFound, getStandards, openPr
       photoSheet.open = false;
       shiftLog.open = false;
       broadcastStatus = undefined;
+    }
+  };
+}
+
+const fragmentIds = Object.keys(REPORT_FRAGMENTS);
+// Each layer clips the same text layout. Shared edges use the same vertices in reverse.
+const cuts = [
+  '0 0, 47% 0, 47% 15%, 54% 15%, 54% 32%, 50% 32%, 50% 50%, 32% 50%, 32% 44%, 16% 44%, 16% 54%, 0 54%',
+  '47% 0, 100% 0, 100% 46%, 84% 46%, 84% 56%, 68% 56%, 68% 50%, 50% 50%, 50% 32%, 54% 32%, 54% 15%, 47% 15%',
+  '0 54%, 16% 54%, 16% 44%, 32% 44%, 32% 50%, 50% 50%, 50% 67%, 44% 67%, 44% 83%, 53% 83%, 53% 100%, 0 100%',
+  '50% 50%, 68% 50%, 68% 56%, 84% 56%, 84% 46%, 100% 46%, 100% 100%, 53% 100%, 53% 83%, 44% 83%, 44% 67%, 50% 67%'
+];
+
+export function createReportFragments(getState, getReport, onAssembled) {
+  const byId = id => document.getElementById(id);
+  const locations = byId('reportFragmentLocations');
+  const assembly = byId('reportAssembly');
+  const board = byId('reportBoard');
+  const tray = byId('reportTray');
+  const status = byId('reportAssemblyStatus');
+  const preview = byId('reportFragmentPreview');
+  const placed = new Set();
+  const trayOrder = [2, 0, 3, 1];
+  let selected;
+  let previewIndex;
+  let drag;
+
+  function paper(index) {
+    const layer = document.createElement('span');
+    layer.className = 'report-paper';
+    layer.style.setProperty('--paper-x', index % 2 === 0 ? '0%' : '-100%');
+    layer.style.setProperty('--paper-y', index < 2 ? '0%' : '-100%');
+    layer.style.clipPath = `polygon(${cuts[index]})`;
+    layer.setAttribute('aria-hidden', 'true');
+    return layer;
+  }
+
+  function tile() {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'report-tile';
+    return button;
+  }
+
+  const pieces = fragmentIds.map((_, index) => {
+    const button = tile();
+    button.append(paper(index));
+    button.addEventListener('click', () => select(index));
+    button.addEventListener('pointerdown', event => beginDrag(event, index));
+    return button;
+  });
+  const slots = fragmentIds.map((_, index) => {
+    const button = tile();
+    button.classList.add('report-slot');
+    button.addEventListener('click', () => place(index));
+    return button;
+  });
+  const entries = fragmentIds.map(() => document.createElement('li'));
+  locations.append(...entries);
+  board.append(...slots);
+  tray.append(...trayOrder.map(index => pieces[index]));
+
+  function select(index) {
+    selected = index;
+    for (const [i, piece] of pieces.entries()) piece.setAttribute('aria-pressed', String(i === selected));
+  }
+
+  function place(index) {
+    if (selected === undefined || placed.has(index)) return;
+    if (index !== selected) {
+      localText(status, '纸边对不上，试试底板上的其他位置。');
+      return;
+    }
+
+    placed.add(index);
+    slots[index].append(pieces[index].firstElementChild);
+    slots[index].disabled = true;
+    pieces[index].style.visibility = 'hidden';
+    select(undefined);
+    localText(status, phrase('已拼接 {count} / {total}', {count: placed.size, total: fragmentIds.length}));
+    if (placed.size === fragmentIds.length) onAssembled();
+    else pieces[trayOrder.find(i => !placed.has(i))].focus();
+  }
+
+  function beginDrag(event, index) {
+    if (!event.isPrimary || event.button !== 0) return;
+    const piece = pieces[index];
+    const {clientX, clientY, pointerId} = event;
+    const bounds = piece.getBoundingClientRect();
+    piece.setPointerCapture(pointerId);
+    drag = {piece, index, clientX, clientY, bounds, pointerId, moved: false};
+  }
+
+  tray.addEventListener('pointermove', event => {
+    if (drag?.pointerId !== event.pointerId) return;
+    const dx = event.clientX - drag.clientX;
+    const dy = event.clientY - drag.clientY;
+    if (!drag.moved && Math.hypot(dx, dy) < 5) return;
+    drag.moved = true;
+    drag.piece.classList.add('is-dragging');
+    drag.piece.style.transform = `translate(${dx}px, ${dy}px)`;
+  });
+
+  function endDrag(event, cancelled = false) {
+    if (drag?.pointerId !== event.pointerId) return;
+    const {piece, index, bounds, moved, clientX, clientY} = drag;
+    drag = undefined;
+    piece.classList.remove('is-dragging');
+    piece.style.transform = '';
+    if (!moved || cancelled) return;
+    const x = bounds.left + bounds.width / 2 + event.clientX - clientX;
+    const y = bounds.top + bounds.height / 2 + event.clientY - clientY;
+    const slot = slots.findIndex(tile => {
+      const rect = tile.getBoundingClientRect();
+      return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+    });
+    select(index);
+    if (slot !== -1) place(slot);
+  }
+
+  tray.addEventListener('pointerup', event => endDrag(event));
+  tray.addEventListener('pointercancel', event => endDrag(event, true));
+
+  function render() {
+    const state = getState();
+    assembly.hidden = state.reportFragments.length < fragmentIds.length;
+    const report = getReport();
+    for (const [index, key] of fragmentIds.entries()) {
+      const collected = state.reportFragments.includes(key);
+      const room = t(ROOMS[REPORT_FRAGMENTS[key].room].name);
+      localText(entries[index], phrase(collected ? '{room} · 已拾取' : '{room} · 待找回', {room}));
+      pieces[index].setAttribute('aria-label', t(phrase('残页 · {room}', {room})));
+      slots[index].setAttribute('aria-label', t(phrase('底板位置 {position}', {position: index + 1})));
+      (placed.has(index) ? slots[index] : pieces[index]).firstElementChild.textContent = report;
+    }
+    if (previewIndex !== undefined) preview.firstElementChild.firstElementChild.textContent = report;
+  }
+
+  return {
+    render,
+    preview(key) {
+      previewIndex = fragmentIds.indexOf(key);
+      const wrapper = document.createElement('div');
+      wrapper.className = 'report-tile';
+      wrapper.append(paper(previewIndex));
+      preview.replaceChildren(wrapper);
+      render();
+    },
+    reset() {
+      for (const index of placed) {
+        pieces[index].append(slots[index].firstElementChild);
+        slots[index].disabled = false;
+        pieces[index].style.visibility = '';
+      }
+      placed.clear();
+      previewIndex = undefined;
+      preview.replaceChildren();
+      select(undefined);
+      localText(status, '');
     }
   };
 }

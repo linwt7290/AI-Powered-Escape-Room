@@ -56,6 +56,13 @@ export const ROOM_PROPS = {
 };
 export const PROP_BY_ROOM = Object.fromEntries(Object.entries(ROOM_PROPS).map(([id, prop]) => [prop.room, id]));
 
+export const REPORT_FRAGMENTS = {
+  reportA: {room: 'research', x: 185, y: 166, anchor: 155, frame: [178, 158, 14, 9], label: '拾取事故报告残页'},
+  reportB: {room: 'archive', x: 152, y: 104, anchor: 93, frame: [145, 96, 14, 9], label: '拾取事故报告残页'},
+  reportC: {room: 'duty', x: 180, y: 152, anchor: 141, frame: [173, 144, 14, 9], label: '拾取事故报告残页'},
+  reportD: {room: 'service', x: 280, y: 153, anchor: 142, frame: [273, 145, 14, 9], label: '拾取事故报告残页'}
+};
+
 export const OBJECTS = {
   inspectionBox: {room: 'service', x: 76, y: 92, anchor: 64, frame: [63, 71, 26, 17], label: '检查检修盒', title: '检修盒'},
   card: {room: 'research', x: 108, y: 153, anchor: 113, frame: [103, 121, 13, 9], label: '拾取工作证'},
@@ -65,6 +72,7 @@ export const OBJECTS = {
   terminal: {room: 'control', x: 333, y: 120, anchor: 75, frame: [309, 82, 49, 37], label: '操作安全终端'},
   cooling: {room: 'maintenance', x: 365, y: 145, anchor: 93, frame: [329, 96, 72, 47], label: '检修冷却回路'},
   exit: {room: 'exit', x: 400, y: 74, anchor: 40, frame: [369, 27, 62, 44], label: '检查出口检测台'},
+  ...REPORT_FRAGMENTS,
   ...ROOM_PROPS
 };
 
@@ -73,6 +81,9 @@ export const OBJECT_KEYS_BY_ROOM = Object.fromEntries(Object.keys(ROOMS).map(roo
 ]));
 
 export function canInspectObject(key, state) {
+  if (Object.hasOwn(REPORT_FRAGMENTS, key)) {
+    return !state.escaped && state.password && !state.reportOpen && !state.reportFragments?.includes(key);
+  }
   return !state.escaped && !(key === 'card' && state.card) && !(key === 'exit' && state.unlocked);
 }
 

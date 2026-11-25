@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {DOORS, EXIT, move, nearbyObject, nextDoor, OBJECTS, PASSAGE_LANES, ROOMS} from '../shared/room.mjs';
+import {DOORS, EXIT, move, nearbyObject, nextDoor, OBJECTS, PASSAGE_LANES, REPORT_FRAGMENTS, ROOMS} from '../shared/room.mjs';
 import {currentObjective, initialState} from '../shared/rules.mjs';
 import {demoDecision} from '../backend/demo-echo.mjs';
 
@@ -90,4 +90,20 @@ test('ECHO can bypass a diagnosed leak without reported coordinates', () => {
   assert.equal(decide('帮我解决掉压。').action, 'isolate_pipe');
   assert.equal(decide('改错').action, 'isolate_pipe');
   assert.equal(decide('Please fix the leak.').action, 'isolate_pipe');
+});
+
+test('report fragments become collectible after the password and then lead back to the terminal', () => {
+  const state = {...initialState(), card: true, journal: true, rack: true, archiveRecovered: true, identity: true};
+  for (const [key, {room, x, y}] of Object.entries(REPORT_FRAGMENTS)) {
+    const player = {room, x, y};
+    state.password = false;
+    assert.notEqual(nearbyObject(player, state), key);
+    state.password = true;
+    assert.equal(currentObjective(state).target, key);
+    assert.equal(nearbyObject(player, state), key);
+    state.reportFragments.push(key);
+    assert.notEqual(nearbyObject(player, state), key);
+  }
+  assert.equal(currentObjective(state).target, 'terminal');
+  assert.equal(state.reportConfirmed, false);
 });

@@ -7,8 +7,10 @@ export const ECHO_STATE_GUIDE = `游戏状态字段说明：布尔值 true 表�
 - rack：已调查档案室的机柜，发现存档损坏。
 - archiveRecovered：机柜里的实验时序存档已恢复。
 - identity：已在安全终端刷卡并通过身份验证。
-- password：已输入正确的四位密码，事故报告已解锁。
-- reportConfirmed：玩家已确认事故报告。
+- password：已输入正确的四位密码，终端可显示事故报告残页的位置。
+- reportFragments：已拾取的残页编号。
+- reportOpen：玩家已拼好事故报告，可在终端阅读。
+- reportConfirmed：玩家已确认读完事故报告，可继续备用冷却任务。
 
 冷却和撤离通道：
 - coupler：已取得维修柜里的冷却耦合器，也可称冷却接头或连接件。

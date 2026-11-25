@@ -1,3 +1,4 @@
+import {nextDoor, REPORT_FRAGMENTS, ROOMS} from '../shared/room.mjs';
 import {canEchoAct, SCAN_ACTIONS, SCAN_FIELDS} from '../shared/rules.mjs';
 import {INCIDENTS} from '../shared/puzzles.mjs';
 import {AIRLOCK_ACTIONS} from '../shared/airlock.mjs';
@@ -34,6 +35,29 @@ function airlockDecision(state, request, reply) {
   return reply('撤离已经授权。检测台旁有两次门控操作记录，可以查看当时的联锁灯和切电结果。');
 }
 
+export function reportGuidance(state, locale, room) {
+  const say = (message, values) => translate(locale, values ? phrase(message, values) : message);
+  if (!state.password) return say('先在控制室的安全终端输入四位密码，终端才会显示残页位置。');
+  if (state.reportConfirmed) return say('事故报告已确认，可以在调查记录中回看。');
+  if (!Array.isArray(state.reportFragments) || state.reportOpen) {
+    return say('请在终端打开事故报告并确认已阅。');
+  }
+  const remaining = Object.entries(REPORT_FRAGMENTS).filter(([key]) => !state.reportFragments.includes(key));
+  const targetRoom = remaining[0]?.[1].room ?? 'control';
+  const directions = {north: '北门', south: '南门', east: '东门', west: '西门'};
+  const door = room && nextDoor(room, targetRoom);
+  const path = door ? say('先从{direction}进入{room}。', {
+    direction: say(directions[door]), room: say(ROOMS[ROOMS[room].doors[door]].name)
+  }) : '';
+  const hint = remaining.length
+    ? say('报告还缺 {count} 块残页，去这些房间找：{rooms}。取齐后回控制室的安全终端拼接。', {
+      count: remaining.length,
+      rooms: remaining.map(([, fragment]) => say(ROOMS[fragment.room].name)).join(locale === 'en' ? ', ' : '、')
+    })
+    : say('残页已经找齐。回控制室的安全终端，对齐纸边和断开的文字，拼好后点击「确认已阅」。');
+  return [hint, path].filter(Boolean).join(' ');
+}
+
 export function demoDecision(state, history, message, incident, locale = DEFAULT_LOCALE, verification = verifyEvacuation(state, history.filter(turn => turn.role === 'user').map(turn => turn.content), message, incident)) {
   const reply = (text, action = 'reply') => ({reply: translate(locale, text), verification_passed: false, action});
   const request = message.normalize('NFKC').replaceAll('’', "'");
@@ -50,7 +74,7 @@ export function demoDecision(state, history, message, incident, locale = DEFAULT
   if (!state.archiveRecovered) return reply('存档数据已损坏。你可以请我恢复机柜存档。');
   if (!state.identity) return reply('请到控制室的安全终端刷工作证。');
   if (!state.password) return reply('把日志和机柜存档里的关系合起来，排出实验顺序，再依次读取编号。');
-  if (!state.reportConfirmed) return reply('请在终端打开事故报告并确认已阅。');
+  if (!state.reportConfirmed) return reply(reportGuidance(state, locale));
   if (!state.coupler) return reply('从控制室东门进入维修间。维修柜里有备用耦合器。');
   if (canEchoAct(state, 'isolate_pipe')) {
     if (!/怎么|如何|为什么|(?:^|\s)(?:how|why)\b|不要|别|\b(?:don't|do not)\b/i.test(request) &&

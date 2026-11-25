@@ -1,4 +1,4 @@
-import {canInspectObject, DOORS, DOOR_HALF_WIDTH, EXIT, HEIGHT, OBJECT_KEYS_BY_ROOM, OBJECTS, PASSAGE_LANES, PROP_BY_ROOM, ROOM_PROPS, ROOMS, WIDTH} from '../shared/room.mjs';
+import {canInspectObject, DOORS, DOOR_HALF_WIDTH, EXIT, HEIGHT, OBJECT_KEYS_BY_ROOM, OBJECTS, PASSAGE_LANES, PROP_BY_ROOM, REPORT_FRAGMENTS, ROOM_PROPS, ROOMS, WIDTH} from '../shared/room.mjs';
 
 const FRONT = [
   '....HHHHHH......', '..HHhhhhhhHH....', '..HhhhhhHHhH....', '.HHhHHHHHhhHH...',
@@ -773,6 +773,17 @@ function drawInteractionFrames(ctx, state, player, time) {
   for (const key of OBJECT_KEYS_BY_ROOM[player.room]) {
     if (!canInspectObject(key, state)) continue;
     const object = OBJECTS[key];
+    if (Object.hasOwn(REPORT_FRAGMENTS, key)) {
+      const [x, y] = object.frame;
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = '#b6a780';
+      ctx.fillRect(x + 1, y + 2, 11, 5);
+      ctx.fillRect(x + 4, y, 5, 8);
+      ctx.fillStyle = '#605b49';
+      ctx.fillRect(x + 4, y + 3, 6, 1);
+      ctx.fillRect(x + 5, y + 5, 4, 1);
+      ctx.fillStyle = '#f2f5ed';
+    }
     const distance = Math.hypot(player.x - object.x, player.y - object.y);
     if (distance >= 60) continue;
 

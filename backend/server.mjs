@@ -5,13 +5,13 @@ import {readFile} from 'node:fs/promises';
 import {loadEnvFile} from 'node:process';
 import {fileURLToPath} from 'node:url';
 import {canEchoAct, currentObjective, ECHO_ACTIONS, ECHO_FIELDS, SCAN_ACTIONS, SCAN_FIELDS, UNLOCK_REQUIREMENTS, validPipeNumber} from '../shared/rules.mjs';
-import {demoDecision, evacuationHint, registeredRoutePrompt, verifyEvacuation} from './demo-echo.mjs';
+import {demoDecision, evacuationHint, registeredRoutePrompt, reportGuidance, verifyEvacuation} from './demo-echo.mjs';
 import {INCIDENTS, PARTICLE_LIMIT, describePassageCheck, passageFailures, passageReadings, PRESSURE_LIMIT} from '../shared/puzzles.mjs';
 import {AIRLOCK_ACTIONS, airlockContext, validAirlock} from '../shared/airlock.mjs';
 import {API_PATHS} from '../shared/api-paths.mjs';
 import {validProgressTimeline} from '../shared/progress-timeline.mjs';
 import {ECHO_STATE_GUIDE} from './echo-state-guide.mjs';
-import {nextDoor, OBJECTS, ROOMS} from '../shared/room.mjs';
+import {nextDoor, OBJECTS, REPORT_FRAGMENTS, ROOMS} from '../shared/room.mjs';
 
 try {
   loadEnvFile(fileURLToPath(new URL('../.env', import.meta.url)));
@@ -186,7 +186,9 @@ const scanIntents = {scan_a: 'A', scan_b: 'B', scan_other: 'other', scan_any: 'a
 const intentInstructions = `
 额外返回 intent 字段，用以下枚举判断本轮意图。根据玩家原话和对话理解省略与指代。游戏状态只用于判断上下文，不能当作玩家授权。
 - next_step：询问现在该做什么；main_step：明确问主线而非手上的支线；evacuation_blocked：询问为什么无法启动撤离。
-- clue_progress：问还缺哪些撤离验收线索；readings_location：问去哪里查看扫描读数。
+- terminal_password：询问安全终端密码是多少或如何推导，即使提到报告也按密码解谜求助处理。
+- incident_report：询问如何查看事故报告、找回残页、拼接或确认已阅。询问事故原因或报告内容属于自由对话。
+- clue_progress：问还缺哪些撤离验收线索；readings_location：问去哪里查看通道扫描实测读数。询问压差验收标准或上限线索与查询扫描读数是两回事。
 - scan_a、scan_b、scan_both、scan_other、scan_any：明确要求扫描指定通道、两条、另一条或任意一条。询问如何扫描、读数或后果不算执行请求。
 - airlock_status：询问当前缓冲舱门、联锁灯或门位传感器状态。
 - airlock_now、airlock_on_entry、airlock_after_close：明确要求现在、进舱时、内门关严后切电。条件必须来自玩家指令。
@@ -200,6 +202,10 @@ async function dispatchEcho(params, recognizedIntent, modelDecision) {
   const snapshot = {...Object.fromEntries(ECHO_FIELDS.map(field => [field, state[field]])), route: state.route ?? null};
   if (state.airlock) snapshot.airlock = state.airlock;
   if (Object.hasOwn(state, 'coolingFaultRow')) snapshot.coolingFaultRow = state.coolingFaultRow;
+  if (snapshot.password && Array.isArray(state.reportFragments)) {
+    snapshot.reportFragments = Object.keys(REPORT_FRAGMENTS).filter(key => state.reportFragments.includes(key));
+    snapshot.reportOpen = state.reportOpen === true;
+  }
   const objective = currentObjective(snapshot);
   const missingStandards = missingPassageStandards(state.standards);
   const context = {...snapshot, objective: objective.label};
@@ -209,9 +215,15 @@ async function dispatchEcho(params, recognizedIntent, modelDecision) {
       translate(locale, missingStandards.includes(id) ? clue.location : clue.reading));
   }
   const targetRoom = OBJECTS[objective.target]?.room;
+  if (snapshot.reportFragments && !snapshot.reportOpen) {
+    context.reportFragmentRooms = Object.entries(REPORT_FRAGMENTS)
+      .filter(([key]) => !snapshot.reportFragments.includes(key)).map(([, fragment]) => translate(locale, ROOMS[fragment.room].name));
+  }
   const mainStep = recognizedIntent === 'main_step' || /^(?:主线|主流程)(?:任务|进度)?(?:[，,：:\s]*)(?:的)?(?:下一步|接下来|现在|目标|到哪|是什么)?[呢吗？?。！!]*$/i.test(message.trim()) ||
     /^(?:(?:我)?(?:现在)?的?主线|主流程).{0,12}(?:下一步|进度|目标)|^(?:main (?:objective|quest|progress)|what.*main (?:objective|quest))/i.test(message.trim());
-  const step = recognizedIntent === 'next_step' || mainStep || nextStepQuestion.test(message.trim());
+  const airlockFollowUp = snapshot.airlock?.authorized &&
+    /^(?:内门|联锁灯|绿灯|the inner door|the interlock light)[^？?。.!！]{0,40}(?:然后呢|接下来呢|下一步(?:呢|做什么)?|what next|what should I do next)[？?。.!！]*$/i.test(message.trim());
+  const step = recognizedIntent === 'next_step' || mainStep || airlockFollowUp || nextStepQuestion.test(message.trim());
   const canScan = ECHO_ACTIONS.some(action => action.startsWith('scan_route_') && canEchoAct(snapshot, action));
   const scanHelp = canScan && (step && !snapshot.scannedA && !snapshot.scannedB ||
     /(?:怎么|如何|怎样).{0,12}扫描|扫描.{0,8}(?:怎么|如何)|how.{0,24}scan/i.test(message));
@@ -259,6 +271,25 @@ async function dispatchEcho(params, recognizedIntent, modelDecision) {
     decision: {...replyOnly(finishedClue ? translate(locale, finishedClue) + ' ' + reply : reply), action}, messages: null, mode: requestMode,
     evacuationEvidence: verification.evidence, offerScan, ...(pressureCriterionVerified && {pressureCriterionVerified})
   });
+  const asksTerminalPassword = recognizedIntent === 'terminal_password' ||
+    /密码|passcode|password/i.test(message) &&
+    !/备件|维修柜|spare|service cabinet|locker/i.test(message) &&
+    !/残页|事故报告|incident report/i.test(message);
+  if (asksTerminalPassword && (!snapshot.password || recognizedIntent === 'terminal_password')) {
+    const hint = snapshot.password ? '安全终端的密码已经验证通过。'
+      : !snapshot.journal ? '查阅研究室桌上的日志，记录实验编号和先后关系。'
+        : !snapshot.rack ? '从控制室北门进入档案室，读取机柜存档。它记录了另一组实验的先后关系。'
+          : !snapshot.archiveRecovered ? '存档数据已损坏。你可以请我恢复机柜存档。'
+            : '把日志和机柜存档里的关系合起来，排出实验顺序，再依次读取编号。';
+    return answer(translate(locale, hint));
+  }
+  const asksReportAccess = recognizedIntent === 'incident_report' ||
+    /残页|(?:事故报告|incident report).*(?:怎么(?:看|读|开|找|拼)|如何|在哪|哪里|找不到|打不开|看不了)|(?:怎么|如何|哪里|where|how).{0,32}(?:事故报告|incident report)/i.test(message);
+  const inspectingClue = state.microscope?.inspecting || state.photo?.inspecting || state.gauge?.inspecting;
+  if (asksReportAccess || (step && snapshot.password && !snapshot.reportConfirmed &&
+      (mainStep || !inspectingClue || finishedClue))) {
+    return answer(reportGuidance(snapshot, locale, room));
+  }
   const immediatePowerCommand = /^(?:(?:请|帮我)\s*)?(?:现在|立即|马上)?\s*(?:切电|切换电源)(?:吧)?[。！!.]*$|^(?:please\s+)?(?:switch|transfer) power(?: now)?[.!]*$/i
     .test(message.normalize('NFKC').trim());
   const airlockIntent = immediatePowerCommand ? 'airlock_now' : recognizedIntent;
@@ -318,6 +349,21 @@ async function dispatchEcho(params, recognizedIntent, modelDecision) {
     if (state.routeReady === false) blockers.push('请先核验并暂存所选路线。');
     if (blockers.length) return answer(blockers.map(hint => translate(locale, hint)).join(' '), canScan);
     return answer(translate(locale, '在出口检测台点击「启动撤离」，进入缓冲舱。'));
+  }
+  const pressureLocationQuestion = /压差|pressure differential/i.test(message) &&
+    /哪|怎么走|where|how (?:do I|can I) get/i.test(message);
+  const asksPressureStandard = pressureLocationQuestion && /标准|上限|线索|验收|limit|standard|criterion|clue/i.test(message);
+  if (asksPressureStandard && state.standards) {
+    if (!missingStandards.includes('lights')) return answer(translate(locale, '压差标准已经收入调查记录。'));
+    const hint = translate(locale, '去设备走廊的照明与压差面板。先校零，再查看左上角检修盒的便签，按便签逐档测试。');
+    const door = room && nextDoor(room, 'service');
+    const path = door ? translate(locale, phrase('先从{direction}进入{room}。', {
+      direction: directionNames[door], room: ROOMS[ROOMS[room].doors[door]].name
+    })) : '';
+    return answer([hint, path].filter(Boolean).join(' '));
+  }
+  if (pressureLocationQuestion && !/读数|扫描|实测|[AB]\s*通道|reading|scan|(?:route|passage)\s+[AB]/i.test(message)) {
+    return answer(translate(locale, '查通道扫描的压差读数，去撤离区的出口检测台。找压差验收标准，去设备走廊的照明与压差面板。'));
   }
   const asksWhereReadings = recognizedIntent === 'readings_location' || /读数|扫描结果|readings|scan results/i.test(message) &&
     /哪|怎么走|where|how (?:do I|can I) get/i.test(message);
@@ -604,6 +650,7 @@ async function dispatchEcho(params, recognizedIntent, modelDecision) {
 出现 currentState.gauge 时，玩家在问走廊压差表或检定便签。只能选择 reply。mode 为 zero 表示校零，reference 表示验收测试。校零时正偏移用减号，负偏移用加号。检修盒在设备走廊左上角靠墙，玩家须亲手调查磨损便签。根据 noteFound 和 tested 提示按便签逐档测试或补测跳过的档位，指导玩家向 ECHO 汇报相邻的通过档和拒绝档或推得的压差上限。不要报出上限或未测试档位的结果。验收测试用于找上限，两条通道的实测来自扫描。
 出现 currentState.photo 时，玩家在问档案室连拍。只能选择 reply。frame 是当前放大的帧号，null 表示还未放大。第一帧内门仍有门缝，第二和第三帧内门已关严。玩家问当前照片里的门是否开着时，依据 frame 回答。结合 frame 和 attempted 提示玩家比较背景面板，说明内门关严、已发送请求、收到回执的区别。不要指出正确帧号；玩家需要亲手点选回执，并在合照面板提交它能证明的撤离条件。
 出现 currentState.microscope 时，玩家在问显微镜。只能选择 reply。结合 violet、aligned、focused、lastCount、collected 给当前一步的提示。未对齐时提示移动计数框到金色角标所在区域。对齐并调清边缘后，只统计计数框内的实心亮点，空心光圈和框外亮点排除。可以解释玩家描述的现象，但不要确认或给出正确读数和颗粒阈值；由玩家提交读数，显微镜负责判定并记录。
+reportFragmentRooms 是密码解锁后尚未拾取事故报告残页的房间。空列表表示应回安全终端拼接。拼好前引导玩家找回残页和还原报告，避免提前复述报告全文。
 回答前先区分玩家问的是含义、当前状态还是过去的经过。只问物件用途或线索细节时，围绕该问题回答。玩家询问位置、走法、目标或下一步时再提供主线指引。只问含义时只解释含义。问当前状态时，先读取 currentState 中对应的值；true、false 都是明确的值。历史仅用于理解指代或补充状态未覆盖的背景。旧回复或提问中的旧前提与本轮状态冲突时，按本轮状态回答。
 问过去的经过或先后顺序时，参考 progressTimeline。atMs 是开局后的毫秒数，同一时间按数组顺序；changes 是变化后的字段值，room 是房间标识。缺少记录时说明无法确认。`;
   const messages = [
@@ -658,7 +705,7 @@ async function dispatchEcho(params, recognizedIntent, modelDecision) {
   }
   const modeledIntent = decision?.intent;
   if (['next_step', 'main_step', 'evacuation_blocked', 'clue_progress', 'readings_location',
-    'scan_both', 'airlock_status', 'airlock_unclear'].includes(modeledIntent) ||
+    'scan_both', 'airlock_status', 'airlock_unclear', 'incident_report', 'terminal_password'].includes(modeledIntent) ||
       Object.hasOwn(scanIntents, modeledIntent) || Object.hasOwn(airlockCommands, modeledIntent)) {
     return dispatchEcho(params, modeledIntent, decision);
   }

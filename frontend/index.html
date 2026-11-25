@@ -229,7 +229,17 @@
       </form>
       <button class="button" type="button" data-evidence aria-expanded="false" disabled>查看调查记录</button>
       <div data-evidence-host hidden></div>
-      <button class="button" id="report" type="button" disabled>查看事故报告</button>
+      <button class="button" id="report" type="button" disabled>查看事故报告残页</button>
+      <section class="inset report" id="reportFragments" hidden aria-labelledby="reportFragmentsTitle">
+        <h3 id="reportFragmentsTitle">事故报告残页</h3>
+        <ul id="reportFragmentLocations"></ul>
+        <div id="reportAssembly" hidden>
+          <p>将残页拖到底板上，对齐断开的文字和纸边。也可以先选残页，再选底板上的位置。</p>
+          <div id="reportBoard" class="report-grid" role="group" aria-label="报告拼接底板"></div>
+          <div id="reportTray" class="report-grid" role="group" aria-label="待拼接的残页"></div>
+          <p id="reportAssemblyStatus" role="status"></p>
+        </div>
+      </section>
       <section class="inset report" id="reportView" hidden>
         <h3>事故报告</h3>
         <p id="reportText"></p>
@@ -237,6 +247,14 @@
       </section>
       <p class="panel-notice" id="terminalNotice" role="status">请刷工作证，并用两份实验记录推导密码。</p>
     </div>
+  </dialog>
+
+  <dialog class="panel" id="reportFragmentDialog" aria-labelledby="reportFragmentTitle">
+    <header class="panel-header">
+      <h2 id="reportFragmentTitle">事故报告残页</h2>
+      <button class="button close" type="button" data-close aria-label="关闭残页预览" autofocus>×</button>
+    </header>
+    <div class="panel-body"><div id="reportFragmentPreview" class="report-grid" aria-hidden="true"></div></div>
   </dialog>
 
   <dialog class="panel device-panel" id="coolingDialog" aria-labelledby="coolingTitle">

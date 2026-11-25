@@ -1,3 +1,4 @@
+import {REPORT_FRAGMENTS} from './room.mjs';
 import {AIRLOCK_ACTIONS, canControlAirlock, initialAirlock} from './airlock.mjs';
 import {phrase} from './i18n.mjs';
 import {missingPassageStandards} from './passage-standards.mjs';
@@ -18,7 +19,7 @@ export const ECHO_ACTIONS = [
 export function initialState() {
   return {
     card: false, journal: false, rack: false, archiveRecovered: false, identity: false, password: false,
-    reportOpen: false, reportConfirmed: false, coupler: false, coolingRestored: false, coolingFaultRow: null,
+    reportFragments: [], reportOpen: false, reportConfirmed: false, coupler: false, coolingRestored: false, coolingFaultRow: null,
     alignedPipe: false, scannedA: false, scannedB: false,
     passageSafe: false, route: null, standards: {}, selectedRoute: null, routeFailure: null,
     unlocked: false, escaped: false, airlock: initialAirlock()
@@ -70,6 +71,11 @@ export function currentObjective(state) {
   if (state.coolingRestored) return {label: '到撤离区核验通道', target: 'exit'};
   if (state.coupler) return {label: '在维修间接通备用冷却', target: 'cooling'};
   if (state.reportConfirmed) return {label: '到维修间取耦合器', target: 'locker'};
+  if (state.password && state.reportFragments && !state.reportConfirmed) {
+    const missing = Object.keys(REPORT_FRAGMENTS).find(key => !state.reportFragments.includes(key));
+    if (missing && !state.reportOpen) return {label: '找回事故报告残页', target: missing};
+    if (!state.reportOpen) return {label: '回安全终端拼接事故报告', target: 'terminal'};
+  }
   if (state.password) return {label: '查阅事故报告', target: 'terminal'};
   if (!state.card) return {label: '拾取工作证', target: 'card'};
   if (!state.journal) return {label: '阅读研究日志', target: 'journal'};

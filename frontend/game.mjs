@@ -1,9 +1,9 @@
 import {phrase} from '../shared/i18n.mjs';
 import {applyLanguage, locale, localText, t} from './ui-language.mjs';
 import {canEchoAct, currentObjective, initialState, SCAN_ACTIONS, SCAN_FIELDS} from '../shared/rules.mjs';
-import {DOORS, EXIT, HEIGHT, move, nearbyObject, OBJECTS, PASSAGE_LANES, PROP_BY_ROOM, ROOMS, SPAWN, WIDTH} from '../shared/room.mjs';
+import {DOORS, EXIT, HEIGHT, move, nearbyObject, OBJECTS, PASSAGE_LANES, PROP_BY_ROOM, REPORT_FRAGMENTS, ROOMS, SPAWN, WIDTH} from '../shared/room.mjs';
 import {hasPressureBoundary, PASSAGE_STANDARDS} from '../shared/passage-standards.mjs';
-import {createRoomProps} from './room-props.mjs';
+import {createReportFragments, createRoomProps} from './room-props.mjs';
 import {createPainter, drawEcho, drawTitleScene} from './pixel-art.mjs';
 import {createCase, EXPERIMENTS, FLOW_RESULT, incidentReport, LOG_CLUE, RACK_CLUE} from '../shared/puzzles.mjs';
 import {createDevices, describeRouteReadings} from './devices.mjs';
@@ -142,6 +142,12 @@ const airlockPanel = createAirlockPanel(() => state, publishAirlockEvent, () => 
   openPanel(passage);
 });
 const roomProps = createRoomProps(openPanel, render, () => state.standards, prop => openEcho({airlock: false, prop}));
+const reportFragments = createReportFragments(() => state, () => incidentReport(incident.kind, locale()), () => {
+  state.reportOpen = true;
+  setTerminalNotice('事故报告已拼完整。请阅读并确认已阅。');
+  render();
+  byId('confirmReport').focus();
+});
 localText(byId('journalClue'), LOG_CLUE);
 
 function setMessage(message) {
@@ -291,7 +297,9 @@ function render() {
   localText(byId('scanStatus'), state.identity ? '身份已验证' : '等待身份验证');
   code.disabled = byId('submitCode').disabled = !state.identity || !state.journal || !state.archiveRecovered || state.password;
   byId('report').disabled = !state.password || state.reportOpen;
+  byId('reportFragments').hidden = !state.password || state.reportOpen;
   byId('reportView').hidden = !state.reportOpen;
+  reportFragments.render();
   byId('confirmReport').disabled = state.reportConfirmed;
   localText(byId('confirmReport'), state.reportConfirmed ? '已确认' : '确认已阅');
   byId('openEcho').disabled = state.escaped;
@@ -494,7 +502,13 @@ function interact() {
   const key = nearbyObject(player, state);
   if (!key) return;
   if (actions[key]) actions[key]();
-  else roomProps.open(key);
+  else if (Object.hasOwn(REPORT_FRAGMENTS, key)) {
+    state.reportFragments.push(key);
+    reportFragments.preview(key);
+    player.pickupUntil = performance.now() + 240;
+    setMessage('已拾取事故报告残页。');
+    openPanel(byId('reportFragmentDialog'));
+  } else roomProps.open(key);
   nearest = nearbyObject(player, state);
   render();
 }
@@ -528,16 +542,16 @@ byId('codeForm').addEventListener('submit', event => {
     return;
   }
   state.password = true;
-  setTerminalNotice('密码正确。事故报告已解锁。');
+  setTerminalNotice('密码正确。终端已找到四块事故报告残页的位置。');
   render();
   byId('report').focus();
 });
 byId('report').addEventListener('click', () => {
   if (!state.password) return;
-  state.reportOpen = true;
-  setTerminalNotice('请阅读事故报告并确认已阅。');
-  render();
-  byId('confirmReport').focus();
+  byId('reportFragments').scrollIntoView({block: 'nearest'});
+  setTerminalNotice(state.reportFragments.length === Object.keys(REPORT_FRAGMENTS).length
+    ? '残页已找齐。将它们拼回事故报告。'
+    : '按终端列出的位置找回残页，再回来拼接。');
 });
 byId('confirmReport').addEventListener('click', () => {
   if (!state.reportOpen) return;
@@ -806,6 +820,7 @@ function reset() {
   devices.reset(incident);
   airlockPanel.reset(incident);
   roomProps.reset();
+  reportFragments.reset();
   player = {...SPAWN, facing: 'down', moving: false, pickupUntil: 0};
   visitedRooms.clear();
   progressTimeline.length = 0;
