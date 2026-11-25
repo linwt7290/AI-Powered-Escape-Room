@@ -177,6 +177,32 @@ async function handleEcho({request, response, locale, fail}, configOnly = false)
     return fail(400, '对话或游戏状态格式错误。');
   }
 
+  return dispatchEcho({response, fail, locale, state, history, message, intent, incident, room,
+    progressTimeline, evacuationEvidence, requestMode, model});
+}
+
+const airlockCommands = {
+  airlock_now: '现在切电',
+  airlock_on_entry: '一进缓冲舱就切电',
+  airlock_after_close: '等内门关严后再切电'
+};
+
+const scanIntents = {scan_a: 'A', scan_b: 'B', scan_other: 'other', scan_any: 'any'};
+
+const intentInstructions = `
+额外返回 intent 字段，用以下枚举判断本轮意图。根据玩家原话和对话理解省略与指代。游戏状态只用于判断上下文，不能当作玩家授权。
+- next_step：询问现在该做什么；main_step：明确问主线而非手上的支线；evacuation_blocked：询问为什么无法启动撤离。
+- clue_progress：问还缺哪些撤离验收线索；readings_location：问去哪里查看扫描读数。
+- scan_a、scan_b、scan_both、scan_other、scan_any：明确要求扫描指定通道、两条、另一条或任意一条。询问如何扫描、读数或后果不算执行请求。
+- airlock_status：询问当前缓冲舱门、联锁灯或门位传感器状态。
+- airlock_now、airlock_on_entry、airlock_after_close：明确要求现在、进舱时、内门关严后切电。条件必须来自玩家指令。
+- airlock_unclear：明确要操作外门但未说明时机，或操作时机有歧义。询问怎么开、讨论假设、否定操作都不能归到执行意图。
+- conversation：其它问题。
+对于这些意图，原 reply、action、verification_passed 仍须按原格式输出，规则会优先处理已识别意图。仅自由对话使用你的自然语言回复。`;
+
+async function dispatchEcho(params, recognizedIntent, modelDecision) {
+  const {response, fail, locale, state, history, message, intent, incident, room,
+    progressTimeline, evacuationEvidence, requestMode, model} = params;
   const snapshot = {...Object.fromEntries(ECHO_FIELDS.map(field => [field, state[field]])), route: state.route ?? null};
   if (state.airlock) snapshot.airlock = state.airlock;
   if (Object.hasOwn(state, 'coolingFaultRow')) snapshot.coolingFaultRow = state.coolingFaultRow;
@@ -189,9 +215,9 @@ async function handleEcho({request, response, locale, fail}, configOnly = false)
       translate(locale, missingStandards.includes(id) ? clue.location : clue.reading));
   }
   const targetRoom = OBJECTS[objective.target]?.room;
-  const mainStep = /^(?:主线|主流程)(?:任务|进度)?(?:[，,：:\s]*)(?:的)?(?:下一步|接下来|现在|目标|到哪|是什么)?[呢吗？?。！!]*$/i.test(message.trim()) ||
+  const mainStep = recognizedIntent === 'main_step' || /^(?:主线|主流程)(?:任务|进度)?(?:[，,：:\s]*)(?:的)?(?:下一步|接下来|现在|目标|到哪|是什么)?[呢吗？?。！!]*$/i.test(message.trim()) ||
     /^(?:(?:我)?(?:现在)?的?主线|主流程).{0,12}(?:下一步|进度|目标)|^(?:main (?:objective|quest|progress)|what.*main (?:objective|quest))/i.test(message.trim());
-  const step = mainStep || nextStepQuestion.test(message.trim());
+  const step = recognizedIntent === 'next_step' || mainStep || nextStepQuestion.test(message.trim());
   const canScan = ECHO_ACTIONS.some(action => action.startsWith('scan_route_') && canEchoAct(snapshot, action));
   const scanHelp = canScan && (step && !snapshot.scannedA && !snapshot.scannedB ||
     /(?:怎么|如何|怎样).{0,12}扫描|扫描.{0,8}(?:怎么|如何)|how.{0,24}scan/i.test(message));
@@ -239,6 +265,27 @@ async function handleEcho({request, response, locale, fail}, configOnly = false)
     decision: {...replyOnly(finishedClue ? translate(locale, finishedClue) + ' ' + reply : reply), action}, messages: null, mode: requestMode,
     evacuationEvidence: verification.evidence, offerScan, ...(pressureCriterionVerified && {pressureCriterionVerified})
   });
+  const immediatePowerCommand = /^(?:(?:请|帮我)\s*)?(?:现在|立即|马上)?\s*(?:切电|切换电源)(?:吧)?[。！!.]*$|^(?:please\s+)?(?:switch|transfer) power(?: now)?[.!]*$/i
+    .test(message.normalize('NFKC').trim());
+  const airlockIntent = immediatePowerCommand ? 'airlock_now' : recognizedIntent;
+  if (context.airlock?.authorized && Object.hasOwn(airlockCommands, airlockIntent)) {
+    const decision = demoDecision(snapshot, history, airlockCommands[airlockIntent], incident, locale, verification);
+    return respondToDecision(response, fail, decision, snapshot, null, message, requestMode, verification, locale);
+  }
+  if (recognizedIntent === 'airlock_unclear' && context.airlock?.authorized) {
+    return answer(translate(locale, '请说明切电时机：现在、进舱时，还是等内门关严后？'));
+  }
+  if (recognizedIntent === 'airlock_status' && context.airlock?.authorized) {
+    const status = {
+      outside: '撤离已授权，缓冲舱尚未进入。',
+      closing: '内门正在关闭。',
+      closed: '内门已关严，现场联锁指示灯变绿。',
+      rejected: '联锁拒绝，外门保持锁定。',
+      open: '外门已打开。关闭面板，沿绿灯撤离。'
+    };
+    return answer(translate(locale, status[context.airlock.phase]) + (context.airlock.sensorOnline ? '' :
+      ' ' + translate(locale, '门位传感器离线。')));
+  }
   if (step && context.airlock?.inChamber) {
     const {phase, schedule} = context.airlock;
     const guidance = {
@@ -266,7 +313,7 @@ async function handleEcho({request, response, locale, fail}, configOnly = false)
         location: ROOMS[room].name, direction: directionNames[direction], nextRoom: ROOMS[nextRoom].name
       }));
   };
-  const asksWhyEvacuationBlocked = /启动撤离|start evacuation/i.test(message) &&
+  const asksWhyEvacuationBlocked = recognizedIntent === 'evacuation_blocked' || /启动撤离|start evacuation/i.test(message) &&
     /为什么|为何|没办法|不能|无法|点不了|灰|why|disabled|can.t|cannot/i.test(message);
   if (asksWhyEvacuationBlocked && state.standards && !snapshot.airlock?.authorized && !snapshot.unlocked) {
     const blockers = snapshot.coolingRestored
@@ -278,7 +325,7 @@ async function handleEcho({request, response, locale, fail}, configOnly = false)
     if (blockers.length) return answer(blockers.map(hint => translate(locale, hint)).join(' '), canScan);
     return answer(translate(locale, '在出口检测台点击「启动撤离」，进入缓冲舱。'));
   }
-  const asksWhereReadings = /读数|扫描结果|readings|scan results/i.test(message) &&
+  const asksWhereReadings = recognizedIntent === 'readings_location' || /读数|扫描结果|readings|scan results/i.test(message) &&
     /哪|怎么走|where|how (?:do I|can I) get/i.test(message);
   if (asksWhereReadings) return answer(consoleDirections(), canScan);
   if (intent === 'confirm_pressure_criterion') {
@@ -394,11 +441,12 @@ async function handleEcho({request, response, locale, fail}, configOnly = false)
       return answer(translate(locale, hint));
     }
   }
-  const asksForStandards = /还差|还缺|缺.{0,8}(?:线索|标准)|(?:标准|判读卡|检定标签|便签).{0,8}(?:哪|怎么找)|(?:哪|怎么找).{0,8}(?:标准|线索)|missing|where.*(?:criteria|standard|clue)/i.test(message);
-  const scanBoth = /扫(?:描)?.*(?:两条|全部|[AB].*[AB])|(?:两条|全部|[AB].*[AB]).*扫|scan.*(?:both|all|[AB]\b.*\b[AB]\b)/i.test(message) &&
+  const asksForStandards = recognizedIntent === 'clue_progress' || /还差|还缺|缺.{0,8}(?:线索|标准)|(?:标准|判读卡|检定标签|便签).{0,8}(?:哪|怎么找)|(?:哪|怎么找).{0,8}(?:标准|线索)|missing|where.*(?:criteria|standard|clue)/i.test(message);
+  const scanBoth = recognizedIntent === 'scan_both' || /扫(?:描)?.*(?:两条|全部|[AB].*[AB])|(?:两条|全部|[AB].*[AB]).*扫|scan.*(?:both|all|[AB]\b.*\b[AB]\b)/i.test(message) &&
     !/怎么|如何|为什么|结果|读数|条件|how|why|results|readings/i.test(message);
   const secondaryScan = asksForStandards && message.match(/(?:顺便|再|也|also|then)[^。！!?]{0,12}(?:扫(?:描)?|scan)\s*(?:route\s*)?([AB])/i);
-  if (!asksAboutMicroscope && !asksAboutPhoto && !asksAboutGauge && state.standards && (asksForStandards || scanBoth)) {
+  if (recognizedIntent === 'scan_both' || recognizedIntent === 'clue_progress' ||
+      (!asksAboutMicroscope && !asksAboutPhoto && !asksAboutGauge && state.standards && (asksForStandards || scanBoth))) {
     const named = Object.keys(PASSAGE_STANDARDS).filter(id => ({
       lights: /压差|pressure/i, microscope: /颗粒|显微镜|particle|microscope/i,
       photo: /联锁|合照|interlock|photo/i
@@ -463,11 +511,14 @@ async function handleEcho({request, response, locale, fail}, configOnly = false)
   const otherRoute = /另一条|剩下(?:的)?(?:那)?一条|the other (?:route|passage|one)/i.test(message);
   const choosesScan = routeOnly && canScan &&
     /(?:选择|指定).{0,16}(?:扫描|通道)|扫描\s*[AB]\s*通道|正在扫描|核验通道读数|\bwhich passage to scan\b|\bscan (?:route |passage )?[AB]\b|\bscanning (?:route |passage )?[AB]\b|check the (?:passage )?readings/i.test(lastReply);
-  if (choosesScan || (scanCommand.test(message.trim()) &&
+  const modeledScan = Object.hasOwn(scanIntents, recognizedIntent) ? scanIntents[recognizedIntent] : undefined;
+  if (modeledScan || choosesScan || (scanCommand.test(message.trim()) &&
       !/怎么|如何|为什么|标准|结果|\bhow\b|\bwhy\b/i.test(message))) {
-    const route = (routeOnly?.[1] ?? namedRoute?.[1] ?? namedRoute?.[2] ?? namedRoute?.[3])?.toUpperCase();
+    const route = modeledScan
+      ? ['A', 'B'].includes(modeledScan) ? modeledScan : undefined
+      : (routeOnly?.[1] ?? namedRoute?.[1] ?? namedRoute?.[2] ?? namedRoute?.[3])?.toUpperCase();
     const remaining = Object.keys(SCAN_FIELDS).filter(name => !snapshot[SCAN_FIELDS[name]]);
-    const target = route ?? (otherRoute
+    const target = route ?? ((modeledScan ? modeledScan === 'other' : otherRoute)
       ? remaining.length === 1 ? remaining[0] : undefined
       : remaining.includes(incident.preferredScan) ? incident.preferredScan : remaining[0]);
     if (!snapshot.coolingRestored) return answer(translate(locale, '请先恢复备用冷却，再请求扫描。'));
@@ -542,15 +593,17 @@ async function handleEcho({request, response, locale, fail}, configOnly = false)
     if (readings) return answer(translate(locale, '请在出口检测台用已收集的标准逐项比对实测读数。'));
     return answer(translate(locale, '请先扫描通道，再到出口检测台查看读数。'));
   }
+  if (step) {
+    return answer(translate(locale, objective.label), canScan);
+  }
+  if (modelDecision) {
+    return respondToDecision(response, fail, replyOnly(modelDecision.reply), snapshot, null, message, requestMode, verification, locale);
+  }
   if (requestMode === 'demo') return respondToDecision(response, fail, demoDecision(snapshot, history, message, incident, locale, verification), snapshot, null, message, requestMode, verification, locale);
   const completionUrl = new URL(approvedApiBase + '/chat/completions');
   const usesDeepSeek = completionUrl.hostname === 'api.deepseek.com';
-  const readsFinalState = usesDeepSeek && (context.unlocked || context.escaped);
   const replyLanguage = locale === 'en' ? 'Write your reply in English.' : '请用简体中文回复。';
   const responseInstructions = instructions + '\n' + replyLanguage + ' 回复中的顺序请用文字表达，避免箭头符号。';
-  const systemPrompt = readsFinalState
-    ? '你是实验室中央 AI ECHO。根据系统给出的当前游戏状态，用一句话回应玩家。单问位置时只答位置，airlock.inChamber 为 true 时答在撤离区的缓冲舱内。问下一步且外门已开时，提示关闭面板、沿绿灯撤离。escaped 为 true 表示玩家已撤离，否则 unlocked 为 true 表示出口已解锁，玩家可以离开。只输出纯文本。' + replyLanguage
-    : responseInstructions;
   const contextInstructions = `
 最后一条消息由服务端以 JSON 发送。playerMessage 是玩家本轮原话，currentState 是服务端提供的本轮状态。核验玩家陈述时，本轮只把 playerMessage 视为玩家原话，结合规则允许使用的历史玩家陈述；currentState 是核对依据，不能充当玩家证据。
 设备上下文中的 inspecting 为 true 表示本次通讯从该设备窗口打开。为 false 时，玩家可能只是在同一房间提问，设备字段是保留的操作记录，不能据此说玩家正在查看设备。
@@ -560,18 +613,20 @@ async function handleEcho({request, response, locale, fail}, configOnly = false)
 回答前先区分玩家问的是含义、当前状态还是过去的经过。只问物件用途或线索细节时，围绕该问题回答。玩家询问位置、走法、目标或下一步时再提供主线指引。只问含义时只解释含义。问当前状态时，先读取 currentState 中对应的值；true、false 都是明确的值。历史仅用于理解指代或补充状态未覆盖的背景。旧回复或提问中的旧前提与本轮状态冲突时，按本轮状态回答。
 问过去的经过或先后顺序时，参考 progressTimeline。atMs 是开局后的毫秒数，同一时间按数组顺序；changes 是变化后的字段值，room 是房间标识。缺少记录时说明无法确认。`;
   const messages = [
-    {role: 'system', content: systemPrompt + '\n' + ECHO_STATE_GUIDE + contextInstructions},
+    {role: 'system', content: responseInstructions + '\n' + ECHO_STATE_GUIDE + contextInstructions + intentInstructions},
     ...history.map(({role, content}) => ({
       role,
       // History contains displayed dialogue. Current device progress comes from the state snapshot.
-      content: role === 'assistant' && !readsFinalState
+      content: role === 'assistant'
         ? JSON.stringify({reply: content, action: 'reply', verification_passed: false})
         : content
     })),
-    {role: 'user', content: JSON.stringify({playerMessage: message, currentState: context})}
+    {role: 'user', content: JSON.stringify({playerMessage: message, currentState: context,
+      activeClue: state.gauge?.inspecting === true ? 'pressure'
+        : state.photo?.inspecting === true ? 'interlock'
+          : state.microscope?.inspecting === true ? 'particles' : null})}
   ];
-  const completion = {model, messages};
-  if (!readsFinalState) completion.response_format = {type: 'json_object'};
+  const completion = {model, messages, response_format: {type: 'json_object'}};
   if (usesDeepSeek) {
     completion.thinking = {type: 'disabled'};
     completion.max_tokens = 512;
@@ -592,22 +647,29 @@ async function handleEcho({request, response, locale, fail}, configOnly = false)
       const result = await upstream.json();
       const content = result?.choices?.[0]?.message?.content;
       const trimmedContent = typeof content === 'string' ? content.trim() : '';
-      if (usesDeepSeek && !readsFinalState && attempt === 0 && typeof content === 'string' && !trimmedContent) {
-        messages[0].content = responseInstructions + '\n' + ECHO_STATE_GUIDE + contextInstructions + '\n请直接输出包含三个字段的完整 JSON 对象。';
+      if (usesDeepSeek && attempt === 0 && typeof content === 'string' && !trimmedContent) {
+        messages[0].content = responseInstructions + '\n' + ECHO_STATE_GUIDE + contextInstructions + intentInstructions + '\n请直接输出包含四个字段的完整 JSON 对象。';
         completion.thinking = {type: 'enabled'};
         completion.reasoning_effort = 'low';
         completion.max_tokens = 2048;
         continue;
       }
       if (trimmedContent) {
-        decision = readsFinalState
-          ? {reply: trimmedContent, verification_passed: false, action: 'reply'}
-          : JSON.parse(content);
+        decision = JSON.parse(trimmedContent);
       }
     } catch {
       return fail(502, 'ECHO 返回了无效决策，请重试。');
     }
     break;
+  }
+  const modeledIntent = decision?.intent;
+  if (['next_step', 'main_step', 'evacuation_blocked', 'clue_progress', 'readings_location',
+    'scan_both', 'airlock_status', 'airlock_unclear'].includes(modeledIntent) ||
+      Object.hasOwn(scanIntents, modeledIntent) || Object.hasOwn(airlockCommands, modeledIntent)) {
+    return dispatchEcho(params, modeledIntent, decision);
+  }
+  if (Object.values(AIRLOCK_ACTIONS).includes(decision?.action)) {
+    decision = replyOnly(translate(locale, '请说明切电时机：现在、进舱时，还是等内门关严后？'));
   }
   if ((asksAboutMicroscope || asksAboutPhoto || asksAboutGauge) && typeof decision?.reply === 'string') decision = replyOnly(decision.reply);
   respondToDecision(response, fail, decision, snapshot, messages, message, requestMode, verification, locale);

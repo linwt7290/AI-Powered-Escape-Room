@@ -198,26 +198,29 @@ export function createRoomProps(openPanel, onEvidenceFound, getStandards, openPr
     sent: '只要测试请求已经发出',
     response: '必须收到门锁联锁的响应'
   };
-  const photoChoice = () => photoConclusion.elements.photoInterpretation.value;
+  const photoChoice = () => photoInterpretation.querySelector('input:checked')?.value;
 
   function renderPhotoChoice() {
     localText(photoSelectedChoice, photoChoiceLabels[photoChoice()] ?? '选择你的判断');
   }
 
+  function closePhotoChoices() {
+    photoChoiceTrigger.focus();
+    photoChoices.open = false;
+  }
+
   photoChoices.addEventListener('change', () => {
     renderPhotoChoice();
-    photoChoices.open = false;
-    photoChoiceTrigger.focus();
+    closePhotoChoices();
   });
-  photoChoices.addEventListener('focusout', event => {
-    if (!photoChoices.contains(event.relatedTarget)) photoChoices.open = false;
+  panel.addEventListener('click', event => {
+    if (!photoChoices.contains(event.target)) photoChoices.open = false;
   });
   photoChoices.addEventListener('keydown', event => {
     if (event.key !== 'Escape' || !photoChoices.open) return;
     event.preventDefault();
     event.stopPropagation();
-    photoChoices.open = false;
-    photoChoiceTrigger.focus();
+    closePhotoChoices();
   });
   photoConclusion.addEventListener('invalid', event => {
     event.preventDefault();
