@@ -279,7 +279,7 @@ const english = {
   '自定义设置需要服务端配置 ECHO_API_BASE 和 ECHO_API_KEY，并提供模型名称。': 'To use custom settings, configure ECHO_API_BASE and ECHO_API_KEY on the server and provide a model name.',
   '暂时无法验证 ECHO 设置，请重试。': 'Could not verify the ECHO settings. Try again.',
   '任务提示': 'Task hints',
-  '用感叹号标出下一步交互': 'Mark the next interaction with an exclamation point',
+  '需要联系 ECHO 时，在通讯按钮上显示感叹号': 'Show an exclamation point on the ECHO button when you need to contact ECHO.',
   '关闭设置': 'Close settings',
   '完成': 'Done',
   '当前目标': 'Objective',

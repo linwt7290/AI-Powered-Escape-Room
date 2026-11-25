@@ -75,7 +75,6 @@
           <span class="room-marker" data-marker="cooling" hidden>备用冷却</span>
           <span class="room-marker" data-marker="exit" hidden>出口检测台</span>
           <span class="room-marker prop-marker" id="propMarker" hidden></span>
-          <span class="task-mark" id="stageTaskMark" hidden></span>
         </div>
         <button class="interact-prompt button" id="roomAction" type="button" hidden><kbd aria-hidden="true">E</kbd><span id="actionLabel"></span></button>
       </div>
@@ -155,7 +154,7 @@
         <label><input type="radio" name="language" value="en"><span lang="en" translate="no">English</span></label>
       </fieldset>
       <label class="hint-option">
-        <span><strong id="taskHintsLabel">任务提示</strong><small id="taskHintsDescription">用感叹号标出下一步交互</small></span>
+        <span><strong id="taskHintsLabel">任务提示</strong><small id="taskHintsDescription">需要联系 ECHO 时，在通讯按钮上显示感叹号</small></span>
         <input id="taskHints" type="checkbox" role="switch" aria-labelledby="taskHintsLabel" aria-describedby="taskHintsDescription" checked>
       </label>
       <form id="echoSettingsForm" class="echo-settings-form">

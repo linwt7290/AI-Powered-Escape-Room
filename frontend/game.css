@@ -250,7 +250,6 @@ button:disabled { cursor: default; }
 }
 .task-mark::before { top: 4px; height: 6px; }
 .task-mark::after { top: 12px; height: 2px; }
-#stageTaskMark { position: absolute; z-index: 1; transform: translate(-50%, 4px); }
 #echoTaskMark { order: 1; }
 .interact-prompt {
   position: absolute;

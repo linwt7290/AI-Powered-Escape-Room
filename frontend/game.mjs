@@ -1,7 +1,7 @@
 import {phrase} from '../shared/i18n.mjs';
 import {applyLanguage, locale, localText, t} from './ui-language.mjs';
 import {canEchoAct, currentObjective, initialState, SCAN_ACTIONS, SCAN_FIELDS} from '../shared/rules.mjs';
-import {DOORS, EXIT, HEIGHT, move, nearbyObject, nextDoor, OBJECTS, PASSAGE_LANES, PROP_BY_ROOM, ROOMS, SPAWN, WIDTH} from '../shared/room.mjs';
+import {DOORS, EXIT, HEIGHT, move, nearbyObject, OBJECTS, PASSAGE_LANES, PROP_BY_ROOM, ROOMS, SPAWN, WIDTH} from '../shared/room.mjs';
 import {hasPressureBoundary, PASSAGE_STANDARDS} from '../shared/passage-standards.mjs';
 import {createRoomProps} from './room-props.mjs';
 import {createPainter, drawEcho, drawTitleScene} from './pixel-art.mjs';
@@ -37,7 +37,6 @@ const mapRooms = Object.fromEntries(Object.entries(ROOMS).map(([room, {name, pos
 const progressBars = [...document.querySelectorAll('.progress-bars i')];
 const roomAction = byId('roomAction');
 const propMarker = byId('propMarker');
-const stageTaskMark = byId('stageTaskMark');
 const echoTaskMark = byId('echoTaskMark');
 const touchAction = byId('touchAction');
 const code = byId('code');
@@ -240,19 +239,6 @@ function renderObjective() {
   const {label, target} = currentObjective(state);
   localText(byId('objective'), label);
   echoTaskMark.hidden = !showTaskHints || target !== 'echo';
-  stageTaskMark.hidden = !showTaskHints || !target || target === 'echo';
-  if (stageTaskMark.hidden) return;
-
-  const object = OBJECTS[target === 'lane' ? 'exit' : target];
-  if (player.room !== object.room) {
-    const door = nextDoor(player.room, object.room);
-    stageTaskMark.hidden = !door;
-    if (door) pin(stageTaskMark, ...DOORS[door].label);
-    return;
-  }
-
-  const x = target === 'lane' ? PASSAGE_LANES[state.route].center : object.x;
-  pin(stageTaskMark, x, object.anchor);
 }
 
 function render() {
