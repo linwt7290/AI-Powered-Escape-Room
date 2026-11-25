@@ -282,6 +282,7 @@
         </section>
         <div id="evacuationControls" hidden>
           <button class="button primary" id="launchEvacuation" type="button" aria-describedby="evacuationBlockers" disabled>启动撤离</button>
+          <p class="device-hint">切电尝试放行时，若所选通道未达标，本局撤离失败。</p>
           <ul id="evacuationBlockers" class="device-hint"></ul>
         </div>
       </div>
@@ -341,7 +342,7 @@
           </div>
           <div id="gaugeTestControls" hidden>
             <button class="button" type="button" id="gaugeRunTest">测试当前档</button>
-            <ul id="gaugeTestResults" aria-label="验收测试记录"></ul>
+            <p id="gaugeTestResults" role="status"></p>
           </div>
           <p id="gaugeFeedback" class="panel-notice" role="status" hidden></p>
         </details>
@@ -360,13 +361,17 @@
           </div>
           <p id="photoResult" class="panel-notice" role="status" hidden></p>
           <form id="photoConclusion">
-            <label for="photoInterpretation">这条回执说明撤离时必须确认什么？</label>
-            <select id="photoInterpretation" required>
-              <option value="">选择你的判断</option>
-              <option value="door">只要看到内门关严</option>
-              <option value="sent">只要测试请求已经发出</option>
-              <option value="response">必须收到门锁联锁的响应</option>
-            </select>
+            <fieldset id="photoJudgment">
+              <legend>这条回执说明撤离时必须确认什么？</legend>
+              <details id="photoChoices">
+                <summary class="button"><span id="photoSelectedChoice"></span></summary>
+                <div class="photo-options">
+                  <label class="button"><input type="radio" name="photoInterpretation" value="door" required><span>只要看到内门关严</span></label>
+                  <label class="button"><input type="radio" name="photoInterpretation" value="sent"><span>只要测试请求已经发出</span></label>
+                  <label class="button"><input type="radio" name="photoInterpretation" value="response"><span>必须收到门锁联锁的响应</span></label>
+                </div>
+              </details>
+            </fieldset>
             <button class="button" type="submit" disabled>提交判断</button>
           </form>
         </details>

@@ -104,16 +104,17 @@ test('the selected route requires both scans and all criteria, then the outer in
   finishClosing(state);
   assert.match(applyAirlockAction(state, AIRLOCK_ACTIONS.now), /压差超限/);
   assert.equal(state.unlocked, false);
-  leaveChamber(state.airlock, undefined, state);
-  assert.equal(state.selectedRoute, null);
-  assert.equal(state.airlock.authorized, false);
-  assert.equal(state.standards.microscope, true);
-  assert.equal(state.scannedA && state.scannedB, true);
+  assert.equal(leaveChamber(state.airlock, undefined, state), undefined);
+  assert.equal(state.routeRejected, true);
+  assert.equal(confirmPassage(state, routes, 'B'), 'unavailable');
 
-  assert.equal(confirmPassage(state, routes, 'B'), 'confirmed');
-  enterChamber(state);
-  finishClosing(state);
-  applyAirlockAction(state, AIRLOCK_ACTIONS.now);
-  assert.equal(state.unlocked, true);
-  assert.equal(state.route, 'B');
+  const nextRun = initialState();
+  nextRun.coolingRestored = nextRun.scannedA = nextRun.scannedB = true;
+  nextRun.standards = {lights: true, photo: true, microscope: true};
+  assert.equal(confirmPassage(nextRun, routes, 'B'), 'confirmed');
+  enterChamber(nextRun);
+  finishClosing(nextRun);
+  applyAirlockAction(nextRun, AIRLOCK_ACTIONS.now);
+  assert.equal(nextRun.unlocked, true);
+  assert.equal(nextRun.route, 'B');
 });

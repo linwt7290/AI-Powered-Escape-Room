@@ -47,7 +47,7 @@ export function createAirlockPanel(getState, publish, returnToDetection) {
     scheduleStatus.hidden = !schedule;
     localText(scheduleStatus, schedule === AIRLOCK_ACTIONS.onEntry ? '已登记。进舱时切电。' : '已登记。等待内门关严。');
     byId('enterChamber').hidden = phase !== 'outside';
-    byId('leaveChamber').hidden = phase === 'outside' || phase === 'open';
+    byId('leaveChamber').hidden = routeRejected || phase === 'outside' || phase === 'open';
     byId('installSensor').hidden = !spare || sensor || phase !== 'outside';
     byId('airlockWalkOut').hidden = phase !== 'open';
     sparesForm.hidden = spare;
@@ -96,7 +96,6 @@ export function createAirlockPanel(getState, publish, returnToDetection) {
     if (!outcome) return;
     closingDeadline = undefined;
     publish(outcome);
-    if (!state.airlock.authorized) returnToDetection();
   });
 
   return {

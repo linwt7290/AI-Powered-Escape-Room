@@ -766,12 +766,41 @@ kbd {
 #photoReceiptEvidence { inset: 32% auto auto 63%; width: 30%; height: 45%; }
 
 #photoConclusion { display: grid; gap: 8px; }
-#photoInterpretation { width: 100%; min-width: 0; min-height: 36px; }
+#photoJudgment { min-width: 0; margin: 0; padding: 0; border: 0; }
+#photoJudgment legend { padding: 0; margin-bottom: 8px; }
+#photoChoices summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 36px;
+  list-style: none;
+}
+#photoChoices summary::-webkit-details-marker { display: none; }
+#photoChoices summary::after {
+  content: "";
+  align-self: center;
+  border: 5px solid transparent;
+  border-top-color: var(--mint);
+  transform: translateY(2px);
+}
+#photoChoices[open] summary::after { transform: translateY(-2px) rotate(180deg); }
+.photo-options {
+  display: grid;
+  gap: 4px;
+  margin-top: 4px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--plate);
+}
+.photo-options label.button { position: relative; justify-self: stretch; text-align: left; }
 #photoConclusion button { justify-self: start; }
 
 #gaugeDial { display: block; width: 100%; height: auto; margin-block: 8px; image-rendering: pixelated; }
 #gaugeTestControls { margin-block: 8px; }
-#gaugeTestResults { margin-block: 8px; }
+#gaugeTestResults { margin-top: 8px; color: var(--muted); }
+#gaugeTestResults[data-result="pass"] { color: var(--mint); }
+#gaugeTestResults[data-result="rejected"] { color: var(--red); }
 #pressureGauge .button[aria-pressed="true"] { border-color: var(--mint); background: #183531; }
 
 #inspectionNote {
@@ -802,6 +831,8 @@ kbd {
 #particleCount legend { padding: 0; margin-bottom: 8px; }
 .particle-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .particle-options label.button { position: relative; justify-self: stretch; justify-content: center; text-align: center; }
-.particle-options input { position: absolute; width: 1px; height: 1px; opacity: 0; }
-.particle-options label:has(:checked) { border-color: var(--mint); background: #183531; color: var(--mint); }
-.particle-options label:has(:focus-visible) { outline: 2px solid var(--mint); outline-offset: 3px; }
+.particle-options input, .photo-options input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.particle-options label:has(:checked), .photo-options label:has(:checked) { border-color: var(--mint); background: #183531; color: var(--mint); }
+.particle-options label:has(:focus-visible), .photo-options label:has(:focus-visible) { outline: 2px solid var(--mint); outline-offset: 3px; }
+
+.ending-panel[data-failed="true"] .ending-icon { background: var(--red); box-shadow: 0 0 14px #ffa39155; }

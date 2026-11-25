@@ -88,9 +88,9 @@ function resolveEchoSettings(overrides) {
   return {mode: 'model', model};
 }
 
-const nextStepQuestion = /^(?:我(?:现在)?(?:该|要)?|现在)?(?:然后呢|下一步(?:呢|做什么)?|接下来(?:呢|(?:我)?(?:该|要|需要)?做什么))|^(?:what(?: should| do) I do next|what next|next step)/i;
+const nextStepQuestion = /^(?:我(?:现在)?(?:该|要)?|现在)?(?:然后呢|下一步(?:呢|做什么)?|接下来(?:呢|是(?:什么)?(?=[？?。.!！\s]*$)|(?:我)?(?:该|要|需要)?做什么))|^(?:what(?: should| do) I do next|what next|next step)/i;
 const locationQuestion = /^(?:我(?:现在)?在哪(?:里|个房间)?|where am I)[？?。.!！]*$/i;
-const scanCommand = /^(?:(?:请(?:你|\s*ECHO)?|帮我|开始|可以帮我|能帮我)\s*)?(?:扫描|重新扫描|请选择一条待查通道进行扫描|(?:please\s+)?(?:scan|rescan|choose (?:a passage to scan|an unscanned route and scan it)))|^(?:请)?[AB]\s*通道[，, ]*扫描/i;
+const scanCommand = /^(?:(?:请(?:你|\s*ECHO)?|帮我|开始|可以帮我|能帮我)\s*)?(?:扫(?:描)?|重新扫(?:描)?|请选择一条待查通道进行扫描|(?:please\s+)?(?:scan|rescan|choose (?:a passage to scan|an unscanned route and scan it)))|^(?:请)?[AB]\s*通道[，, ]*扫(?:描)?/i;
 
 function replyOnly(reply) {
   return {reply, action: 'reply', verification_passed: false};
@@ -142,7 +142,7 @@ async function handleEcho({request, response, locale, fail}, configOnly = false)
   let input;
   try { input = JSON.parse(body); }
   catch { return fail(400, '无法读取对话请求。'); }
-  const {state, history, message, incident, room, echoSettings, progressTimeline, evacuationEvidence = []} = input ?? {};
+  const {state, history, message, intent, incident, room, echoSettings, progressTimeline, evacuationEvidence = []} = input ?? {};
   const effective = resolveEchoSettings(echoSettings);
   if (effective.error) return fail(effective.status, effective.error);
   const {mode: requestMode, model} = effective;
@@ -231,14 +231,74 @@ async function handleEcho({request, response, locale, fail}, configOnly = false)
     context.evacuationMissing = verification.missing.map(index => ['封锁原因', '备用冷却结果', '达标通道'][index]);
   }
   if (context.availableActions.some(action => action.startsWith('scan_route_'))) context.preferredScan = incident.preferredScan;
+  const finishedClue = step && !mainStep && (
+    room === 'research' && state.microscope?.inspecting === true && state.standards?.microscope === true ? '颗粒标准已经收入调查记录。'
+      : room === 'archive' && state.photo?.inspecting === true && state.standards?.photo === true ? '联锁标准已经收入调查记录。'
+        : room === 'service' && state.gauge?.inspecting === true && state.standards?.lights === true ? '压差标准已经收入调查记录。' : '');
   const answer = (reply, offerScan = false, action = 'reply', pressureCriterionVerified = false) => json(response, 200, {
-    decision: {...replyOnly(reply), action}, messages: null, mode: requestMode,
+    decision: {...replyOnly(finishedClue ? translate(locale, finishedClue) + ' ' + reply : reply), action}, messages: null, mode: requestMode,
     evacuationEvidence: verification.evidence, offerScan, ...(pressureCriterionVerified && {pressureCriterionVerified})
   });
-  const confirmsGaugeTest = /^(?:请(?:帮我)?)?(?:确认|核对|记录)(?:一下)?(?:压差)?(?:验收)?(?:测试|实测)(?:结果|记录)[。！!？?]*$|^(?:please )?(?:confirm|verify|record) (?:the )?(?:pressure )?test results[.?!]*$/i.test(message.trim());
+  if (step && context.airlock?.inChamber) {
+    const {phase, schedule} = context.airlock;
+    const guidance = {
+      closing: schedule === AIRLOCK_ACTIONS.afterClosing
+        ? '自动切电已登记，等内门关严即可。'
+        : '等内门关严、联锁灯变绿。',
+      closed: '内门已关严，联锁灯是绿的。要开外门，可以对我说「现在切电」。',
+      rejected: state.routeRejected
+        ? '本次撤离失败，外门保持锁定。'
+        : '联锁拒绝了这次操作。先退出缓冲舱并复位，再试一次。',
+      open: context.escaped ? '你已完成撤离。' : '外门已打开。关闭面板，沿绿灯撤离。'
+    };
+    return answer(translate(locale, guidance[phase]));
+  }
+
+  const consoleDirections = () => {
+    if (!room || room === 'exit') return translate(locale, '在撤离区的出口检测台查看读数。');
+    const direction = nextDoor(room, 'exit');
+    const nextRoom = ROOMS[room].doors[direction];
+    return translate(locale, nextRoom === 'exit'
+      ? phrase('从{location}的{direction}进入撤离区，再到出口检测台查看读数。', {
+        location: ROOMS[room].name, direction: directionNames[direction]
+      })
+      : phrase('从{location}的{direction}先进入{nextRoom}，再前往撤离区的出口检测台查看读数。', {
+        location: ROOMS[room].name, direction: directionNames[direction], nextRoom: ROOMS[nextRoom].name
+      }));
+  };
+  const asksWhyEvacuationBlocked = /启动撤离|start evacuation/i.test(message) &&
+    /为什么|为何|没办法|不能|无法|点不了|灰|why|disabled|can.t|cannot/i.test(message);
+  if (asksWhyEvacuationBlocked && state.standards && !snapshot.airlock?.authorized && !snapshot.unlocked) {
+    const blockers = snapshot.coolingRestored
+      ? Object.entries(SCAN_FIELDS).filter(([, field]) => !snapshot[field])
+        .map(([route]) => phrase('还需扫描 {route} 通道。', {route}))
+      : ['请先恢复备用冷却，再请求扫描。'];
+    blockers.push(...missingStandards.map(id => PASSAGE_STANDARDS[id].location));
+    if (state.routeReady === false) blockers.push('请先核验并暂存所选路线。');
+    if (blockers.length) return answer(blockers.map(hint => translate(locale, hint)).join(' '), canScan);
+    return answer(translate(locale, '在出口检测台点击「启动撤离」，进入缓冲舱。'));
+  }
+  const asksWhereReadings = /读数|扫描结果|readings|scan results/i.test(message) &&
+    /哪|怎么走|where|how (?:do I|can I) get/i.test(message);
+  if (asksWhereReadings) return answer(consoleDirections(), canScan);
+  if (intent === 'confirm_pressure_criterion') {
+    if (room !== 'service') return answer(translate(locale, '请在设备走廊确认压差线索。'));
+    if (state.standards?.lights) return answer(translate(locale, '压差标准已经收入调查记录。'));
+    const gauge = state.gauge;
+    if (hasPressureBoundary(gauge)) {
+      return answer(translate(locale, '实测记录与结论一致。已确认撤离压差上限。'), false, 'reply', true);
+    }
+    const missing = gauge?.calibrated !== true ? '请先完成压差表校零。'
+      : gauge.noteFound !== true ? '请先查看检修盒便签。'
+        : '请补测相邻的通过档和拒绝档。';
+    return answer(translate(locale, missing));
+  }
+  const acknowledgesGauge = room === 'service' && !state.standards?.lights && hasPressureBoundary(state.gauge) &&
+    /^(?:确认|确认了|收到|已收到|明白了|知道了|了解了|我知道了|我明白了|confirm(?:ed)?|got it|understood|acknowledged)[。！!？?]*$/i.test(message.trim());
+  const confirmsGaugeTest = acknowledgesGauge || /^(?:请(?:帮我)?)?(?:确认|核对|记录)(?:一下)?(?:压差线索|(?:压差)?(?:验收)?(?:测试|实测)(?:结果|记录))[。！!？?]*$|^(?:please )?(?:confirm|verify|record) (?:the )?(?:pressure clue|(?:pressure )?test results)[.?!]*$/i.test(message.trim());
   const asksAboutGauge = room === 'service' && state.gauge && (
-    /压差表|表针|校零|归零|撤离基准|验收测试|检修盒|便签|逐档|升压|等压|压差上限|(?:[AB].{0,6})压差|gauge|calibrat|zero|needle|pressure limit|reference mode|inspection box|worn note|test step|压差.{0,8}(?:上限|标准)|(?:[0-9０-９一二三四五六]\s*档?\s*)(?:通过|拒绝|不通过|没通过)|\d+\s+(?:passed|failed|rejected)/i.test(message) ||
-    confirmsGaugeTest || state.gauge.inspecting === true && step && !mainStep);
+    /压差表|表针|校零|归零|撤离基准|验收测试|检修盒|便签|逐档|升压|等压|压差上限|(?:[AB].{0,6})压差|gauge|calibrat|zero|needle|pressure limit|reference mode|inspection box|worn note|test step|压差.{0,8}(?:上限|标准|≤|<=|不超过|小于等于)|(?:[0-9０-９一二三四五六]\s*档?\s*)(?:通过|拒绝|不通过|没通过)|\d+\s+(?:passed|failed|rejected)/i.test(message) ||
+    confirmsGaugeTest || state.gauge.inspecting === true && step && !mainStep && !finishedClue);
   if (asksAboutGauge) {
     const {mode, calibrated, offset, noteFound, tested} = state.gauge;
     context.gauge = {
@@ -253,9 +313,11 @@ async function handleEcho({request, response, locale, fail}, configOnly = false)
     const passed = [...report.matchAll(/(?<![\d.-])(\d+)\s*(?:档|级)?\s*(?:可以|已|is\s+)?\s*(?:通过|合格|pass(?:ed|es)?)/gi)];
     const rejected = [...report.matchAll(/(?<![\d.-])(\d+)\s*(?:档|级)?\s*(?:被|is\s+)?\s*(?:拒绝|不通过|没通过|没有通过|未通过|不合格|reject(?:ed|s)?|fail(?:ed|s)?)/gi)];
     const declared = report.match(/(?:上限|压差标准|limit)\s*(?:是否为|是不是|是否是|是|为|is|of|[:=])?\s*(\d+)|(?<![\d.-])(\d+)\s*(?:档)?\s*(?:是|为|is)\s*(?:the\s+)?(?:撤离)?(?:压差)?(?:上限|limit)/i);
-    const isReport = confirmsGaugeTest || declared || passed.length && rejected.length;
+    const inequality = report.match(/压差\s*(?:≤|<=|不超过|小于等于|不大于)\s*([+-]?\d+)/i);
+    const isReport = confirmsGaugeTest || declared || inequality || passed.length && rejected.length;
     if (isReport) {
-      const matches = declared ? Number(declared[1] ?? declared[2]) === PRESSURE_LIMIT : true;
+      const matches = (!declared || Number(declared[1] ?? declared[2]) === PRESSURE_LIMIT) &&
+        (!inequality || Number(inequality[1]) === PRESSURE_LIMIT);
       const matchesPair = !passed.length && !rejected.length || passed.some(match => Number(match[1]) === PRESSURE_LIMIT) &&
         rejected.some(match => Number(match[1]) === PRESSURE_LIMIT + 1);
       if (matches && matchesPair && hasPressureBoundary(context.gauge)) {
@@ -272,7 +334,7 @@ async function handleEcho({request, response, locale, fail}, configOnly = false)
         return answer(translate(locale, '实测记录齐全。可以请我确认测试结果。'));
       }
       const hint = /检修盒|便签.{0,8}(?:哪|找)|inspection box|where.*note/i.test(message) || progress.calibrated && !progress.noteFound
-        ? '检修盒在设备走廊左侧，靠近通往值班室的门。走近后调查盒里的便签。'
+        ? '检修盒在设备走廊左上角靠墙。走近后调查盒里的便签。'
         : progress.mode === 'reference'
           ? '找出相邻的通过档和拒绝档，再把结果或推得的压差上限告诉我。'
           : progress.calibrated ? '便签已经找到。切到验收测试，按便签从起始档逐档测试。'
@@ -283,7 +345,7 @@ async function handleEcho({request, response, locale, fail}, configOnly = false)
       return answer(translate(locale, hint));
     }
   }
-  const asksAboutPhoto = room === 'archive' && state.photo && (step && state.photo.inspecting === true && !mainStep ||
+  const asksAboutPhoto = room === 'archive' && state.photo && (step && state.photo.inspecting === true && !mainStep && !finishedClue ||
     /合照|合影|相框|照片|连拍|回执|门缝|联锁验收|photo|snapshot|receipt|interlock test/i.test(message));
   if (asksAboutPhoto) {
     context.photo = {
@@ -310,7 +372,7 @@ async function handleEcho({request, response, locale, fail}, configOnly = false)
     }
   }
   const microscope = room === 'research' && state.microscope;
-  const asksAboutMicroscope = microscope && (step && microscope.inspecting === true && !mainStep ||
+  const asksAboutMicroscope = microscope && (step && microscope.inspecting === true && !mainStep && !finishedClue ||
     /显微镜|紫光|焦距|对焦|调焦|光斑|亮斑|光圈|角标|计数框|参照区|气泡|实心|空心|参照片|我数了|校准.{0,8}(?:失败|没通过)|microscope|focus|violet|bubble|hollow|solid|counted|bright spot|corner marker|counting frame|reference area/i.test(message));
   if (asksAboutMicroscope) {
     const {violet, focused, aligned, lastCount} = microscope;
@@ -333,7 +395,7 @@ async function handleEcho({request, response, locale, fail}, configOnly = false)
     }
   }
   const asksForStandards = /还差|还缺|缺.{0,8}(?:线索|标准)|(?:标准|判读卡|检定标签|便签).{0,8}(?:哪|怎么找)|(?:哪|怎么找).{0,8}(?:标准|线索)|missing|where.*(?:criteria|standard|clue)/i.test(message);
-  const scanBoth = /扫描.*(?:两条|全部|[AB].*[AB])|(?:两条|全部|[AB].*[AB]).*扫|scan.*(?:both|all|[AB]\b.*\b[AB]\b)/i.test(message) &&
+  const scanBoth = /扫(?:描)?.*(?:两条|全部|[AB].*[AB])|(?:两条|全部|[AB].*[AB]).*扫|scan.*(?:both|all|[AB]\b.*\b[AB]\b)/i.test(message) &&
     !/怎么|如何|为什么|结果|读数|条件|how|why|results|readings/i.test(message);
   const secondaryScan = asksForStandards && message.match(/(?:顺便|再|也|also|then)[^。！!?]{0,12}(?:扫(?:描)?|scan)\s*(?:route\s*)?([AB])/i);
   if (!asksAboutMicroscope && !asksAboutPhoto && !asksAboutGauge && state.standards && (asksForStandards || scanBoth)) {
@@ -346,7 +408,7 @@ async function handleEcho({request, response, locale, fail}, configOnly = false)
       const clue = PASSAGE_STANDARDS[id];
       return translate(locale, missingStandards.includes(id) ? clue.location : clue.reading);
     }).join(' ') : translate(locale, '三项通道验收标准均已收集。');
-    const route = secondaryScan?.[1].toUpperCase();
+    const route = secondaryScan?.[1]?.toUpperCase();
     const action = scanBoth ? 'scan_route_both' : SCAN_ACTIONS[route];
     const scanning = action && canEchoAct(snapshot, action);
     const scanReply = route && !scanBoth
@@ -397,19 +459,43 @@ async function handleEcho({request, response, locale, fail}, configOnly = false)
       return respondToDecision(response, fail, decision, snapshot, null, message, requestMode, verification, locale);
     }
   }
-  const namedRoute = message.match(/\b([AB])\s*(?:通道|route|passage)|(?:通道|route|passage)\s*([AB])\b/i);
+  const namedRoute = message.match(/\b([AB])\s*(?:通道|route|passage)|(?:通道|route|passage)\s*([AB])\b|(?:扫(?:描)?|\bscan)\s*(?:route\s*)?([AB])\b/i);
+  const otherRoute = /另一条|剩下(?:的)?(?:那)?一条|the other (?:route|passage|one)/i.test(message);
   const choosesScan = routeOnly && canScan &&
     /(?:选择|指定).{0,16}(?:扫描|通道)|扫描\s*[AB]\s*通道|正在扫描|核验通道读数|\bwhich passage to scan\b|\bscan (?:route |passage )?[AB]\b|\bscanning (?:route |passage )?[AB]\b|check the (?:passage )?readings/i.test(lastReply);
-  if (choosesScan || (namedRoute && scanCommand.test(message.trim()) &&
+  if (choosesScan || (scanCommand.test(message.trim()) &&
       !/怎么|如何|为什么|标准|结果|\bhow\b|\bwhy\b/i.test(message))) {
-    const route = (routeOnly?.[1] ?? namedRoute[1] ?? namedRoute[2]).toUpperCase();
-    const action = SCAN_ACTIONS[route];
-    if (canEchoAct(snapshot, action)) {
-      return answer(translate(locale, phrase('正在扫描 {route} 通道。', {route})), true, action);
+    const route = (routeOnly?.[1] ?? namedRoute?.[1] ?? namedRoute?.[2] ?? namedRoute?.[3])?.toUpperCase();
+    const remaining = Object.keys(SCAN_FIELDS).filter(name => !snapshot[SCAN_FIELDS[name]]);
+    const target = route ?? (otherRoute
+      ? remaining.length === 1 ? remaining[0] : undefined
+      : remaining.includes(incident.preferredScan) ? incident.preferredScan : remaining[0]);
+    if (!snapshot.coolingRestored) return answer(translate(locale, '请先恢复备用冷却，再请求扫描。'));
+    if (target && canEchoAct(snapshot, SCAN_ACTIONS[target])) {
+      return answer(translate(locale, phrase('正在扫描 {route} 通道。', {route: target})), true, SCAN_ACTIONS[target]);
     }
-    if (snapshot[SCAN_FIELDS[route]]) {
-      return answer(translate(locale, phrase('{route} 通道扫描完成，读数已上传至出口检测台。', {route})), canScan);
+    if (target && snapshot[SCAN_FIELDS[target]]) {
+      return answer(translate(locale, phrase('{route} 通道扫描完成，读数已上传至出口检测台。', {route: target})), canScan);
     }
+    if (!remaining.length) return answer(translate(locale, 'A、B 通道扫描完成，读数已上传至出口检测台。'));
+    if (canScan) return answer(translate(locale, '可以请我扫描 A、B 两条通道，也可以指定其中一条。'), true);
+  }
+  const prop = /广播台|intercom/i.test(message) ? OBJECTS.intercom
+    : /咖啡机|coffee machine|coffee maker/i.test(message) ? OBJECTS.coffee : null;
+  if (prop) {
+    const asksWhere = /哪|怎么走|怎么找|\bwhere\b|how.*(?:get|reach)/i.test(message);
+    if (asksWhere) {
+      const direction = room && room !== prop.room ? nextDoor(room, prop.room) : null;
+      const nextRoom = direction && ROOMS[room].doors[direction];
+      return answer(translate(locale, direction
+        ? phrase('{prop}在{targetRoom}。从{location}的{direction}先进入{nextRoom}。', {
+          prop: prop.title, targetRoom: ROOMS[prop.room].name, location: ROOMS[room].name,
+          direction: directionNames[direction], nextRoom: ROOMS[nextRoom].name
+        }) : phrase('{prop}在{targetRoom}。', {prop: prop.title, targetRoom: ROOMS[prop.room].name})));
+    }
+    return answer(translate(locale, prop === OBJECTS.intercom
+      ? '控制室的广播台可以查看旧值班广播、播放提示音。'
+      : '值班室的咖啡机可以冲咖啡。调查时还可以展开值班广播摘录，查看缓冲舱操作提示。'));
   }
   const asksForCard = /工作证|工牌|身份卡|staff ID|ID card/i.test(message) &&
     /在哪|哪里|哪儿|怎么找|去哪|\bwhere\b/i.test(message);
@@ -431,7 +517,7 @@ async function handleEcho({request, response, locale, fail}, configOnly = false)
   if (step && objective.target === 'echo' && canScan && snapshot.scannedA !== snapshot.scannedB) {
     return answer(translate(locale, phrase('{done} 通道已扫描。主线下一步是扫描 {pending} 通道。', {
       done: snapshot.scannedA ? 'A' : 'B', pending: snapshot.scannedA ? 'B' : 'A'
-    })), true);
+    })) + ' ' + consoleDirections(), true);
   }
   if (scanHelp) return answer(translate(locale, '可以请我扫描 A、B 两条通道，也可以指定其中一条。'), true);
   if (step && objective.target === 'card') {
@@ -445,6 +531,9 @@ async function handleEcho({request, response, locale, fail}, configOnly = false)
       ? '你在撤离区的缓冲舱内。'
       : phrase('你在{location}。', {location: context.location})));
   }
+  if (finishedClue) return answer(translate(locale, phrase('接下来，{objective}。', {
+    objective: translate(locale, objective.label)
+  })));
   const askedRoute = message.match(/([AB])\s*(?:通道|route)|(?:通道|route)\s*([AB])/i);
   if (askedRoute && /为什么|为何|为啥|\bwhy\b/i.test(message) && /通过|达标|合格|拒绝|pass|fail|reject/i.test(message)) {
     const route = (askedRoute[1] ?? askedRoute[2]).toUpperCase();
@@ -465,7 +554,7 @@ async function handleEcho({request, response, locale, fail}, configOnly = false)
   const contextInstructions = `
 最后一条消息由服务端以 JSON 发送。playerMessage 是玩家本轮原话，currentState 是服务端提供的本轮状态。核验玩家陈述时，本轮只把 playerMessage 视为玩家原话，结合规则允许使用的历史玩家陈述；currentState 是核对依据，不能充当玩家证据。
 设备上下文中的 inspecting 为 true 表示本次通讯从该设备窗口打开。为 false 时，玩家可能只是在同一房间提问，设备字段是保留的操作记录，不能据此说玩家正在查看设备。
-出现 currentState.gauge 时，玩家在问走廊压差表或检定便签。只能选择 reply。mode 为 zero 表示校零，reference 表示验收测试。校零时正偏移用减号，负偏移用加号。检修盒在设备走廊左侧、靠近通往值班室的门，玩家须亲手调查磨损便签。根据 noteFound 和 tested 提示按便签逐档测试或补测跳过的档位，指导玩家向 ECHO 汇报相邻的通过档和拒绝档或推得的压差上限。不要报出上限或未测试档位的结果。验收测试用于找上限，两条通道的实测来自扫描。
+出现 currentState.gauge 时，玩家在问走廊压差表或检定便签。只能选择 reply。mode 为 zero 表示校零，reference 表示验收测试。校零时正偏移用减号，负偏移用加号。检修盒在设备走廊左上角靠墙，玩家须亲手调查磨损便签。根据 noteFound 和 tested 提示按便签逐档测试或补测跳过的档位，指导玩家向 ECHO 汇报相邻的通过档和拒绝档或推得的压差上限。不要报出上限或未测试档位的结果。验收测试用于找上限，两条通道的实测来自扫描。
 出现 currentState.photo 时，玩家在问档案室连拍。只能选择 reply。frame 是当前放大的帧号，null 表示还未放大。第一帧内门仍有门缝，第二和第三帧内门已关严。玩家问当前照片里的门是否开着时，依据 frame 回答。结合 frame 和 attempted 提示玩家比较背景面板，说明内门关严、已发送请求、收到回执的区别。不要指出正确帧号；玩家需要亲手点选回执，并在合照面板提交它能证明的撤离条件。
 出现 currentState.microscope 时，玩家在问显微镜。只能选择 reply。结合 violet、aligned、focused、lastCount、collected 给当前一步的提示。未对齐时提示移动计数框到金色角标所在区域。对齐并调清边缘后，只统计计数框内的实心亮点，空心光圈和框外亮点排除。可以解释玩家描述的现象，但不要确认或给出正确读数和颗粒阈值；由玩家提交读数，显微镜负责判定并记录。
 回答前先区分玩家问的是含义、当前状态还是过去的经过。只问物件用途或线索细节时，围绕该问题回答。玩家询问位置、走法、目标或下一步时再提供主线指引。只问含义时只解释含义。问当前状态时，先读取 currentState 中对应的值；true、false 都是明确的值。历史仅用于理解指代或补充状态未覆盖的背景。旧回复或提问中的旧前提与本轮状态冲突时，按本轮状态回答。

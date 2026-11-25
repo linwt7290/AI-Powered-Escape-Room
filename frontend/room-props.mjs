@@ -78,9 +78,8 @@ export function createRoomProps(openPanel, onEvidenceFound, getStandards, openPr
   let feedback;
   const lensPositions = 6;
   const startFocus = Math.floor(lensPositions / 2);
-  const clearPositions = [0, 1, 5];
+  const targetFocus = 0;
   let focus = startFocus;
-  let targetFocus;
   let lastCount = null;
   let selected;
   let active = {};
@@ -190,7 +189,42 @@ export function createRoomProps(openPanel, onEvidenceFound, getStandards, openPr
   const photoReceipt = document.getElementById('photoReceiptEvidence');
   const photoConclusion = document.getElementById('photoConclusion');
   const photoSubmit = photoConclusion.querySelector('button[type=submit]');
-  const photoInterpretation = document.getElementById('photoInterpretation');
+  const photoInterpretation = document.getElementById('photoJudgment');
+  const photoChoices = document.getElementById('photoChoices');
+  const photoChoiceTrigger = photoChoices.querySelector('summary');
+  const photoSelectedChoice = document.getElementById('photoSelectedChoice');
+  const photoChoiceLabels = {
+    door: '只要看到内门关严',
+    sent: '只要测试请求已经发出',
+    response: '必须收到门锁联锁的响应'
+  };
+  const photoChoice = () => photoConclusion.elements.photoInterpretation.value;
+
+  function renderPhotoChoice() {
+    localText(photoSelectedChoice, photoChoiceLabels[photoChoice()] ?? '选择你的判断');
+  }
+
+  photoChoices.addEventListener('change', () => {
+    renderPhotoChoice();
+    photoChoices.open = false;
+    photoChoiceTrigger.focus();
+  });
+  photoChoices.addEventListener('focusout', event => {
+    if (!photoChoices.contains(event.relatedTarget)) photoChoices.open = false;
+  });
+  photoChoices.addEventListener('keydown', event => {
+    if (event.key !== 'Escape' || !photoChoices.open) return;
+    event.preventDefault();
+    event.stopPropagation();
+    photoChoices.open = false;
+    photoChoiceTrigger.focus();
+  });
+  photoConclusion.addEventListener('invalid', event => {
+    event.preventDefault();
+    photoChoices.open = true;
+    event.target.focus();
+  }, true);
+
   let receiptInspected = false;
   const photoResult = document.getElementById('photoResult');
   const photoFrames = [...photoSheet.querySelectorAll('[data-photo-frame]')];
@@ -218,6 +252,7 @@ export function createRoomProps(openPanel, onEvidenceFound, getStandards, openPr
     }
     photoSubmit.disabled = Boolean(collected) || !record;
     photoInterpretation.disabled = Boolean(collected);
+    renderPhotoChoice();
     photoResult.hidden = !collected && !photoFeedback;
     if (!photoResult.hidden) localText(photoResult, photoFeedback ?? '线索已记录：门锁联锁必须响应。');
   }
@@ -228,6 +263,7 @@ export function createRoomProps(openPanel, onEvidenceFound, getStandards, openPr
       photoFrame = Number(button.dataset.photoFrame);
       receiptInspected = false;
       photoConclusion.reset();
+      photoChoices.open = false;
       photoFeedback = undefined;
       renderPhoto();
     });
@@ -249,7 +285,7 @@ export function createRoomProps(openPanel, onEvidenceFound, getStandards, openPr
       photoFeedback = '请先点击照片右侧的联锁面板，查看回执后再提交。';
     } else if (!record.passed) {
       photoFeedback = '这条记录还没有收到响应。请找一张有实际回执的照片。';
-    } else if (photoInterpretation.value !== 'response') {
+    } else if (photoChoice() !== 'response') {
       photoFeedback = '再比较门位、发送请求和收到响应分别能证明什么。';
     } else {
       getStandards().photo = true;
@@ -279,7 +315,7 @@ export function createRoomProps(openPanel, onEvidenceFound, getStandards, openPr
   const gaugeTestControls = document.getElementById('gaugeTestControls');
   const gaugeResults = document.getElementById('gaugeTestResults');
   const confirmZero = document.getElementById('gaugeConfirmZero');
-  const testedSteps = new Map();
+  const testedSteps = new Set();
   let testStep;
   let gaugeNoteFound;
   const gaugeNotice = document.getElementById('gaugeFeedback');
@@ -339,8 +375,19 @@ export function createRoomProps(openPanel, onEvidenceFound, getStandards, openPr
     decrease.disabled = reading === minTick;
     increase.disabled = reading === maxTick;
     gaugeTestControls.hidden = !testing;
+    if (testing) {
+      const tested = testedSteps.has(testStep);
+      const result = testStep < 0 ? 'reverse' : testStep <= PRESSURE_LIMIT ? 'pass' : 'rejected';
+      const labels = {
+        reverse: '{tick} 档 · 反向读数',
+        pass: '{tick} 档 · 通过',
+        rejected: '{tick} 档 · 拒绝'
+      };
+      gaugeResults.dataset.result = tested ? result : 'pending';
+      localText(gaugeResults, tested ? phrase(labels[result], {tick: testStep}) : '当前档待测试');
+    }
     localText(document.getElementById('gaugeInstructions'), gaugeMode === 'reference'
-      ? hasPressureBoundary({calibrated: gaugeCalibrated, noteFound: gaugeNoteFound, tested: [...testedSteps.keys()]})
+      ? hasPressureBoundary({calibrated: gaugeCalibrated, noteFound: gaugeNoteFound, tested: [...testedSteps]})
         ? '实测记录齐全。可以请 ECHO 确认测试结果。'
         : '逐档测试，找到相邻的通过档与拒绝档，再向 ECHO 报告结论。'
       : gaugeCalibrated ? gaugeNoteFound ? '从便签指定的档位开始测试。' : '校零完成。可联系 ECHO 了解下一步。'
@@ -375,16 +422,7 @@ export function createRoomProps(openPanel, onEvidenceFound, getStandards, openPr
   });
   document.getElementById('gaugeRunTest').addEventListener('click', () => {
     if (gaugeMode !== 'reference' || !gaugeCalibrated || !gaugeNoteFound || getStandards().lights) return;
-    if (!testedSteps.has(testStep)) {
-      const tick = testStep;
-      const result = document.createElement('li');
-      const label = tick < 0 ? '{tick} 档：反向读数'
-        : tick <= PRESSURE_LIMIT ? '{tick} 档：通过' : '{tick} 档：拒绝';
-      localText(result, phrase(label, {tick}));
-      const next = [...testedSteps.keys()].filter(step => step > tick).sort((left, right) => left - right)[0];
-      gaugeResults.insertBefore(result, testedSteps.get(next) ?? null);
-      testedSteps.set(tick, result);
-    }
+    testedSteps.add(testStep);
     renderGauge();
   });
 
@@ -466,7 +504,7 @@ export function createRoomProps(openPanel, onEvidenceFound, getStandards, openPr
       return phrase('线索已记录：撤离通道压差 ≤ {limit}。', {limit: PRESSURE_LIMIT});
     },
     gaugeContext() {
-      return {mode: gaugeMode, calibrated: gaugeCalibrated, noteFound: gaugeNoteFound, tested: [...testedSteps.keys()], offset: gaugeMode === 'zero' ? needleOffset : null};
+      return {mode: gaugeMode, calibrated: gaugeCalibrated, noteFound: gaugeNoteFound, tested: [...testedSteps], offset: gaugeMode === 'zero' ? needleOffset : null};
     },
     photoContext() {
       return {frame: photoFrame === null ? null : photoFrame + 1, attempted: Boolean(photoFeedback), receiptInspected};
@@ -491,9 +529,7 @@ export function createRoomProps(openPanel, onEvidenceFound, getStandards, openPr
       gaugeNoteFound = false;
       testStep = 0;
       testedSteps.clear();
-      gaugeResults.replaceChildren();
       focus = startFocus;
-      targetFocus = clearPositions[randomInt(clearPositions.length)];
       frame = {x: 1, y: 1};
       reference = randomInt(8);
       if (reference >= 4) reference += 1;
@@ -512,6 +548,7 @@ export function createRoomProps(openPanel, onEvidenceFound, getStandards, openPr
       photoFrame = null;
       receiptInspected = false;
       photoConclusion.reset();
+      photoChoices.open = false;
       photoFeedback = undefined;
       photoSheet.open = false;
       shiftLog.open = false;

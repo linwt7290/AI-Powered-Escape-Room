@@ -70,6 +70,7 @@ export function pipeCoordinates(message) {
 }
 
 export function currentObjective(state) {
+  if (state.routeRejected) return {label: '撤离失败'};
   if (state.escaped) return {label: '撤离完成'};
   if (state.unlocked) return {label: phrase('从 {route} 通道撤离', {route: state.route}), target: 'lane'};
   if (state.airlock?.authorized) return {label: '到撤离区操作缓冲舱', target: 'exit'};

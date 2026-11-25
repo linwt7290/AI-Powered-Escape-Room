@@ -51,7 +51,7 @@ export function routeRejectionMessage({selectedRoute, routeFailure}) {
   const reason = {
     pressure: '压差超限', particles: '颗粒指数超限', interlock: '通道联锁无响应，未达到撤离标准'
   }[routeFailure];
-  return phrase('{route} 通道撤离中止：{reason}。请退出缓冲舱并重新选择路线。', {
+  return phrase('{route} 通道撤离失败：{reason}。外门保持锁定。', {
     route: selectedRoute, reason
   });
 }
@@ -103,13 +103,7 @@ export function finishClosing(state, locale = DEFAULT_LOCALE) {
 }
 
 export function leaveChamber(airlock, locale = DEFAULT_LOCALE, state) {
-  if (airlock.phase === 'outside' || airlock.phase === 'open') return;
-  if (state?.routeRejected) {
-    state.routeRejected = false;
-    state.selectedRoute = null;
-    state.routeFailure = null;
-    airlock.authorized = false;
-  }
+  if (state?.routeRejected || airlock.phase === 'outside' || airlock.phase === 'open') return;
   airlock.phase = 'outside';
   airlock.schedule = null;
   return translate(locale, '已退回实验室，缓冲舱已复位。');

@@ -192,6 +192,9 @@ export function createDevices(getState, feedback, render, openChamber) {
   });
 
   return {
+    get routeReady() {
+      return Boolean(candidateRoute) && new FormData(routeForm).get('route') === candidateRoute;
+    },
     render: renderDevices,
     refreshLanguage: renderPipes,
     isolate(row, column) {

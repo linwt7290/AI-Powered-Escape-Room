@@ -2,12 +2,12 @@ import {phrase} from '../shared/i18n.mjs';
 import {applyLanguage, locale, localText, t} from './ui-language.mjs';
 import {canEchoAct, currentObjective, initialState, SCAN_ACTIONS, SCAN_FIELDS} from '../shared/rules.mjs';
 import {DOORS, EXIT, HEIGHT, move, nearbyObject, nextDoor, OBJECTS, PASSAGE_LANES, PROP_BY_ROOM, ROOMS, SPAWN, WIDTH} from '../shared/room.mjs';
-import {PASSAGE_STANDARDS} from '../shared/passage-standards.mjs';
+import {hasPressureBoundary, PASSAGE_STANDARDS} from '../shared/passage-standards.mjs';
 import {createRoomProps} from './room-props.mjs';
 import {createPainter, drawEcho, drawTitleScene} from './pixel-art.mjs';
 import {createCase, EXPERIMENTS, FLOW_RESULT, incidentReport, LOG_CLUE, RACK_CLUE} from '../shared/puzzles.mjs';
 import {createDevices, describeRouteReadings} from './devices.mjs';
-import {AIRLOCK_ACTIONS, applyAirlockAction, leaveChamber} from '../shared/airlock.mjs';
+import {AIRLOCK_ACTIONS, applyAirlockAction, leaveChamber, routeRejectionMessage} from '../shared/airlock.mjs';
 import {createAirlockPanel} from './airlock-panel.mjs';
 import {checkEchoConfig, sendEchoMessage} from './echo/api.mjs';
 import {progressSnapshot, TIMELINE_LIMIT} from '../shared/progress-timeline.mjs';
@@ -51,6 +51,14 @@ const evidenceButtons = [...document.querySelectorAll('[data-evidence]')];
 const chatInput = byId('chatInput');
 const conversation = byId('conversation');
 const portrait = byId('echoPortrait');
+const confirmPressure = document.createElement('button');
+confirmPressure.className = 'button';
+confirmPressure.type = 'submit';
+confirmPressure.formNoValidate = true;
+confirmPressure.setAttribute('form', 'chatForm');
+confirmPressure.hidden = true;
+localText(confirmPressure, '向 ECHO 确认压差线索');
+byId('echoActions').append(confirmPressure);
 const quickActions = [
   {label: '恢复机柜存档', text: '请恢复机柜存档。', actions: ['recover_archive']},
   {label: '请 ECHO 选择扫描对象', text: '请选择一条待查通道进行扫描。', actions: Object.values(SCAN_ACTIONS)},
@@ -168,7 +176,10 @@ function renderComms() {
       (showScanActions || !action.startsWith('scan_route_')));
     button.disabled = Boolean(pending);
   }
-  byId('echoActions').hidden = quickActions.every(({button}) => button.hidden);
+  confirmPressure.hidden = player.room !== 'service' || Boolean(state.standards.lights) ||
+    !hasPressureBoundary(roomProps.gaugeContext());
+  confirmPressure.disabled = Boolean(pending);
+  byId('echoActions').hidden = confirmPressure.hidden && quickActions.every(({button}) => button.hidden);
 }
 
 function renderTarget() {
@@ -302,6 +313,15 @@ function render() {
   airlockPanel.render();
   renderComms();
   renderTarget();
+  if (state.routeRejected && !byId('endingDialog').open) {
+    chat.close();
+    localText(byId('endingTitle'), '撤离失败');
+    localText(byId('endingReport'), routeRejectionMessage(state));
+    byId('endingEcho').hidden = true;
+    byId('endingDialog').dataset.failed = 'true';
+    localText(byId('playAgain'), '重开一局');
+    openPanel(byId('endingDialog'));
+  }
 }
 
 function clearMovement() {
@@ -652,14 +672,16 @@ function applyEchoAction({action, row, column}) {
 
 byId('chatForm').addEventListener('submit', async event => {
   event.preventDefault();
-  const message = chatInput.value.trim();
+  const confirmingPressure = event.submitter === confirmPressure;
+  const message = confirmingPressure ? t('确认压差线索') : chatInput.value.trim();
   if (!message || pending || state.escaped) return;
   const controller = new AbortController();
   pending = controller;
   const requested = echoSettings;
   const payload = {
-    state: structuredClone(state), room: player.room, history: history.slice(-10), message,
+    state: {...structuredClone(state), routeReady: devices.routeReady}, room: player.room, history: history.slice(-10), message,
     progressTimeline: progressTimeline.slice(), evacuationEvidence,
+    ...(confirmingPressure && {intent: 'confirm_pressure_criterion'}),
     incident: {kind: incident.kind, preferredScan: incident.preferredScan, safeRoute: incident.safeRoute}
   };
   if (player.room === 'service') payload.state.gauge = {...roomProps.gaugeContext(), inspecting: chat.dataset.console === 'lights'};
@@ -757,6 +779,9 @@ for (const button of document.querySelectorAll('[data-direction]')) {
 
 function escapeRoom() {
   state.escaped = true;
+  localText(byId('endingTitle'), '撤离完成');
+  localText(byId('playAgain'), '再玩一次');
+  byId('endingDialog').dataset.failed = 'false';
   setMessage('撤离完成。实验室已进入维护模式。');
   localText(byId('endingReport'), phrase('你经 {route} 通道撤离。备用冷却持续运行，实验室已进入维护模式。', {route: state.route}));
   render();
@@ -814,6 +839,9 @@ function reset() {
 }
 
 byId('reset').addEventListener('click', reset);
+byId('endingDialog').addEventListener('cancel', event => {
+  if (state.routeRejected) event.preventDefault();
+});
 byId('playAgain').addEventListener('click', reset);
 byId('startGame').addEventListener('click', () => openPanel(intro));
 byId('enterLab').addEventListener('click', () => {

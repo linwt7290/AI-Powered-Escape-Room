@@ -57,7 +57,7 @@ export const ROOM_PROPS = {
 export const PROP_BY_ROOM = Object.fromEntries(Object.entries(ROOM_PROPS).map(([id, prop]) => [prop.room, id]));
 
 export const OBJECTS = {
-  inspectionBox: {room: 'service', x: 132, y: 188, anchor: 159, frame: [119, 167, 26, 17], label: '检查检修盒', title: '检修盒'},
+  inspectionBox: {room: 'service', x: 76, y: 92, anchor: 64, frame: [63, 71, 26, 17], label: '检查检修盒', title: '检修盒'},
   card: {room: 'research', x: 108, y: 153, anchor: 113, frame: [103, 121, 13, 9], label: '拾取工作证'},
   journal: {room: 'research', x: 153, y: 153, anchor: 112, frame: [143, 116, 20, 16], label: '阅读研究日志'},
   rack: {room: 'archive', x: 87, y: 77, anchor: 29, frame: [67, 30, 36, 46], label: '读取机柜存档'},
