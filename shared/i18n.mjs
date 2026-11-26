@@ -2,6 +2,12 @@ export const DEFAULT_LOCALE = 'zh-CN';
 export const LOCALES = [DEFAULT_LOCALE, 'en'];
 
 const english = {
+  '残页': 'Fragments',
+  '验收标准': 'Criteria',
+  '收集通道验收标准': 'Collect passage criteria',
+  '待找回 {list}': 'Missing in {list}',
+  '缺 {list}': 'Missing {list}',
+  '{status}，目标房间': '{status}, objective room',
   '四块残页已经找齐。回控制室的安全终端拼接，完成后点击「确认已阅」。': 'All four fragments are collected. Assemble them at the control room security terminal, then select “Confirm read.”',
   '从{direction}进入{room}': 'Take the {direction} into {room}',
   '{path}。': '{path}.',
@@ -359,7 +365,7 @@ const english = {
   '自定义设置需要服务端配置 ECHO_API_BASE 和 ECHO_API_KEY，并提供模型名称。': 'To use custom settings, configure ECHO_API_BASE and ECHO_API_KEY on the server and provide a model name.',
   '暂时无法验证 ECHO 设置，请重试。': 'Could not verify the ECHO settings. Try again.',
   '任务提示': 'Task hints',
-  '需要联系 ECHO 时，在通讯按钮上显示感叹号': 'Show an exclamation point on the ECHO button when you need to contact ECHO.',
+  '用感叹号标记下一步交互，并在小地图标出目标房间': 'Mark the next interaction with an exclamation point and highlight objective rooms on the map.',
   '关闭设置': 'Close settings',
   '完成': 'Done',
   '当前目标': 'Objective',

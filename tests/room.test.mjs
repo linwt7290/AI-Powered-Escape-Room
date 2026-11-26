@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {DOORS, EXIT, move, nearbyObject, nextDoor, OBJECTS, PASSAGE_LANES, REPORT_FRAGMENTS, ROOMS} from '../shared/room.mjs';
-import {currentObjective, initialState} from '../shared/rules.mjs';
+import {currentObjective, initialState, objectiveProgress} from '../shared/rules.mjs';
 import {demoDecision} from '../backend/demo-echo.mjs';
 
 const opposites = {north: 'south', south: 'north', east: 'west', west: 'east'};
@@ -106,6 +106,32 @@ test('report fragments become collectible after the password and then lead back 
   }
   assert.equal(currentObjective(state).target, 'terminal');
   assert.equal(state.reportConfirmed, false);
+});
+
+test('the task HUD lists unfinished fragments and criteria as evidence is collected', () => {
+  const state = initialState();
+  assert.equal(objectiveProgress(state), undefined);
+
+  state.password = true;
+  state.reportFragments.push('reportB', 'reportD');
+  assert.deepEqual(objectiveProgress(state), {
+    kind: 'fragments', count: 2, total: 4, missing: ['reportA', 'reportC']
+  });
+  state.reportFragments.push('reportA', 'reportC');
+  assert.deepEqual(objectiveProgress(state), {kind: 'fragments', count: 4, total: 4, missing: []});
+  assert.equal(currentObjective(state).target, 'terminal');
+
+  state.reportOpen = state.reportConfirmed = true;
+  assert.equal(objectiveProgress(state), undefined);
+  state.coolingRestored = true;
+  Object.assign(state.standards, {microscope: true, photo: true});
+  assert.deepEqual(objectiveProgress(state), {
+    kind: 'standards', count: 2, total: 3, missing: ['lights']
+  });
+  state.standards.lights = true;
+  assert.deepEqual(objectiveProgress(state), {kind: 'standards', count: 3, total: 3, missing: []});
+  state.airlock.authorized = true;
+  assert.equal(objectiveProgress(state), undefined);
 });
 
 test('the service corridor inspection box blocks movement and remains reachable', () => {

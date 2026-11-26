@@ -1,10 +1,10 @@
 import {phrase} from '../shared/i18n.mjs';
 import {applyLanguage, locale, localText, t} from './ui-language.mjs';
-import {canEchoAct, currentObjective, initialState, SCAN_ACTIONS, SCAN_FIELDS} from '../shared/rules.mjs';
-import {DOORS, EXIT, HEIGHT, move, nearbyObject, OBJECTS, PASSAGE_LANES, PROP_BY_ROOM, REPORT_FRAGMENTS, ROOMS, SPAWN, WIDTH} from '../shared/room.mjs';
+import {canEchoAct, currentObjective, initialState, objectiveProgress, SCAN_ACTIONS, SCAN_FIELDS} from '../shared/rules.mjs';
+import {DOORS, EXIT, HEIGHT, move, nearbyObject, nextDoor, OBJECTS, PASSAGE_LANES, PROP_BY_ROOM, REPORT_FRAGMENTS, ROOMS, SPAWN, WIDTH} from '../shared/room.mjs';
 import {hasPressureBoundary, PASSAGE_STANDARDS} from '../shared/passage-standards.mjs';
 import {createReportFragments, createRoomProps} from './room-props.mjs';
-import {createPainter, drawEcho, drawTitleScene} from './pixel-art.mjs';
+import {createPainter, drawEcho, drawEndingScene, drawTitleScene} from './pixel-art.mjs';
 import {createCase, EXPERIMENTS, FLOW_RESULT, incidentReport, LOG_CLUE, RACK_CLUE} from '../shared/puzzles.mjs';
 import {createDevices, describeRouteReadings} from './devices.mjs';
 import {AIRLOCK_ACTIONS, applyAirlockAction, leaveChamber, routeRejectionMessage} from '../shared/airlock.mjs';
@@ -36,8 +36,10 @@ const mapRooms = Object.fromEntries(Object.entries(ROOMS).map(([room, {name, pos
   return [room, tile];
 }));
 const progressBars = [...document.querySelectorAll('.progress-bars i')];
+const objectiveDetail = byId('objectiveDetail');
 const roomAction = byId('roomAction');
 const propMarker = byId('propMarker');
+const stageTaskMark = byId('stageTaskMark');
 const echoTaskMark = byId('echoTaskMark');
 const touchAction = byId('touchAction');
 const code = byId('code');
@@ -228,7 +230,6 @@ function renderRoom() {
     const visited = visitedRooms.has(room);
     tile.dataset.visited = String(visited);
     localText(tile, ROOMS[room].name);
-    tile.setAttribute('aria-label', t(phrase(visited ? '{room}，已到访' : '{room}，未到访', {room: ROOMS[room].name})));
     if (room === player.room) tile.setAttribute('aria-current', 'location');
     else tile.removeAttribute('aria-current');
   }
@@ -247,8 +248,48 @@ function renderRoom() {
 
 function renderObjective() {
   const {label, target} = currentObjective(state);
-  localText(byId('objective'), label);
+  const progress = objectiveProgress(state);
+  const collectingStandards = target === 'exit' && progress?.kind === 'standards' && progress.missing.length > 0;
+  localText(byId('objective'), collectingStandards ? '收集通道验收标准' : label);
   echoTaskMark.hidden = !showTaskHints || target !== 'echo';
+  objectiveDetail.hidden = !progress;
+  let targets = target === 'lane' ? ['exit'] : [target];
+  if (progress) {
+    const {kind, count, total, missing} = progress;
+    const fragments = kind === 'fragments';
+    const title = fragments ? '残页' : '验收标准';
+    const values = missing.map(id => t(fragments ? ROOMS[OBJECTS[id].room].name : PASSAGE_STANDARDS[id].name));
+    const progressLabel = t(phrase('{title} {count}/{total}', {title, count, total}));
+    if (!values.length) {
+      objectiveDetail.textContent = progressLabel;
+    } else {
+      const list = values.join(locale() === 'en' ? ', ' : '、');
+      objectiveDetail.textContent = progressLabel + ' · ' + t(phrase(fragments ? '待找回 {list}' : '缺 {list}', {list}));
+      if (target !== 'echo') targets = missing;
+    }
+  }
+  const targetObjects = targets.map(id => OBJECTS[id]).filter(Boolean);
+  const targetRooms = new Set(targetObjects.map(object => object.room));
+  const localTarget = targetObjects.find(object => object.room === player.room);
+  const nextRoom = targetObjects[0]?.room;
+  const nextExit = !localTarget && nextRoom ? nextDoor(player.room, nextRoom) : undefined;
+  stageTaskMark.hidden = !showTaskHints || !(localTarget || nextExit);
+  if (!stageTaskMark.hidden) {
+    stageTaskMark.toggleAttribute('data-above-label', nextExit === 'south');
+    if (localTarget) {
+      const x = target === 'lane' ? PASSAGE_LANES[state.route].center : localTarget.x;
+      pin(stageTaskMark, x, localTarget.anchor);
+    } else {
+      pin(stageTaskMark, ...DOORS[nextExit].label);
+    }
+  }
+  for (const [room, tile] of Object.entries(mapRooms)) {
+    const highlighted = showTaskHints && targetRooms.has(room);
+    tile.toggleAttribute('data-task-target', highlighted);
+    const mapLabel = visitedRooms.has(room) ? '{room}，已到访' : '{room}，未到访';
+    const status = t(phrase(mapLabel, {room: ROOMS[room].name}));
+    tile.setAttribute('aria-label', highlighted ? t(phrase('{status}，目标房间', {status})) : status);
+  }
 }
 
 function render() {
@@ -696,7 +737,7 @@ byId('chatForm').addEventListener('submit', async event => {
     const {ok, data: result} = await sendEchoMessage({...payload, echoSettings: requested}, controller.signal);
     if (pending !== controller) return;
     if (!ok) throw new Error(result.error);
-    const {decision, messages, mode} = result;
+    const {decision, messages, mode, model, modelDecision} = result;
     evacuationEvidence = result.evacuationEvidence ?? [];
     showScanActions ||= result.offerScan === true;
     if (requested === echoSettings) connection = mode === 'model' ? '模型在线' : modeLabels.demo;
@@ -710,7 +751,10 @@ byId('chatForm').addEventListener('submit', async event => {
       addTurn('device', outcome);
       setMessage(outcome);
     }
-    lastEchoTrace = {mode, input: payload, messages, decision, outcome: outcome ? t(outcome) : '', stateAfter: structuredClone(state), deviceEvents: []};
+    lastEchoTrace = {
+      mode, model, input: payload, messages, modelDecision, decision,
+      outcome: outcome ? t(outcome) : '', stateAfter: structuredClone(state), deviceEvents: []
+    };
     byId('echoTrace').textContent = JSON.stringify(lastEchoTrace, null, 2);
     setChatStatus();
     render();
@@ -793,6 +837,7 @@ function escapeRoom() {
   const endingEcho = byId('endingEcho');
   endingEcho.hidden = !roomProps.active.brewedCoffee;
   localText(endingEcho, 'ECHO：你刚才还冲了杯咖啡。夜班结束，辛苦了。');
+  drawEndingScene(byId('endingScene'));
   openPanel(byId('endingDialog'));
 }
 

@@ -45,6 +45,7 @@
           <div>
             <span class="hud-label">当前目标</span>
             <strong id="objective">调查办公桌</strong>
+            <span class="objective-detail" id="objectiveDetail" role="status" hidden></span>
           </div>
         </div>
         <span class="door-status" id="doorStatus" data-state="locked"><i aria-hidden="true"></i><span id="doorLabel">出口锁定</span></span>
@@ -75,6 +76,7 @@
           <span class="room-marker" data-marker="cooling" hidden>备用冷却</span>
           <span class="room-marker" data-marker="exit" hidden>出口检测台</span>
           <span class="room-marker prop-marker" id="propMarker" hidden></span>
+          <span class="task-mark" id="stageTaskMark" hidden></span>
         </div>
         <button class="interact-prompt button" id="roomAction" type="button" hidden><kbd aria-hidden="true">E</kbd><span id="actionLabel"></span></button>
       </div>
@@ -150,7 +152,7 @@
         <label><input type="radio" name="language" value="en"><span lang="en" translate="no">English</span></label>
       </fieldset>
       <label class="hint-option">
-        <span><strong id="taskHintsLabel">任务提示</strong><small id="taskHintsDescription">需要联系 ECHO 时，在通讯按钮上显示感叹号</small></span>
+        <span><strong id="taskHintsLabel">任务提示</strong><small id="taskHintsDescription">用感叹号标记下一步交互，并在小地图标出目标房间</small></span>
         <input id="taskHints" type="checkbox" role="switch" aria-labelledby="taskHintsLabel" aria-describedby="taskHintsDescription" checked>
       </label>
       <form id="echoSettingsForm" class="echo-settings-form">
@@ -492,8 +494,11 @@
     </div>
   </dialog>
 
-  <dialog class="panel ending-panel" id="endingDialog" aria-labelledby="endingTitle">
+  <dialog class="panel ending-panel" id="endingDialog" aria-labelledby="endingTitle" aria-describedby="endingReport">
     <div class="panel-body">
+      <div class="ending-art" aria-hidden="true">
+        <canvas id="endingScene" width="240" height="112"></canvas>
+      </div>
       <span class="ending-icon" aria-hidden="true"></span>
       <h2 id="endingTitle">撤离完成</h2>
       <p id="endingReport">实验室已进入维护模式。</p>

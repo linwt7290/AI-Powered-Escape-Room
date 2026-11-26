@@ -543,6 +543,51 @@ export function drawTitleScene(canvas) {
   drawPlayer(ctx, {x: 377, y: 171, facing: 'up', moving: false}, 0);
 }
 
+export function drawEndingScene(canvas) {
+  const ctx = canvas.getContext('2d', {alpha: false});
+  const {width, height} = canvas;
+
+  // The sky lightens toward the ridge outside the lab.
+  const sky = ['#14243b', '#1d344c', '#334258', '#54556b', '#7a6576', '#a47a7c', '#d79783', '#efb989'];
+  for (const [index, color] of sky.entries()) rect(ctx, color, 0, index * 10, width, 10);
+  for (const [y, inset] of [[31, 10], [34, 6], [38, 3], [42, 0]]) {
+    rect(ctx, '#ffd48e', 146 + inset, y, 37 - inset * 2, 71 - y);
+  }
+  rect(ctx, '#ffe6a5', 155, 36, 18, 2);
+  for (const [x, y, length] of [[106, 22, 17], [187, 26, 24], [113, 48, 18], [192, 54, 17], [209, 56, 19]]) {
+    rect(ctx, '#f5c2997a', x, y, length, 1);
+  }
+  const farRidge = [[0, 67], [15, 63], [30, 69], [54, 61], [75, 65], [93, 72], [111, 66],
+    [128, 75], [156, 71], [177, 65], [192, 70], [213, 61], [230, 66], [240, 74]];
+  const nearRidge = [[0, 81], [36, 74], [60, 80], [83, 75], [99, 80], [115, 84],
+    [139, 79], [157, 82], [174, 78], [194, 84], [212, 77], [230, 74], [240, 81]];
+  for (const [ridge, color] of [[farRidge, '#51495e'], [nearRidge, '#304651']]) {
+    for (let index = 1; index < ridge.length; index++) {
+      const [x, y] = ridge[index - 1];
+      rect(ctx, color, x, y, ridge[index][0] - x, height - y);
+    }
+  }
+
+  // The open hatch and the visitor are the same motifs as on the game's title screen.
+  rect(ctx, '#172830', 0, 99, width, 13);
+  rect(ctx, '#455b5b', 0, 99, width, 2);
+  rect(ctx, '#25434a', 0, 36, 78, 63);
+  rect(ctx, '#3e6266', 0, 36, 78, 2);
+  rect(ctx, '#1b313a', 0, 52, 74, 1);
+  rect(ctx, '#1b313a', 0, 81, 74, 1);
+  panel(ctx, 22, 47, 51, 51, '#183a41', '#6f9691');
+  rect(ctx, '#214f4b', 31, 54, 32, 41);
+  rect(ctx, '#16373b', 38, 56, 18, 36);
+  rect(ctx, '#6fba9a', 31, 55, 2, 38);
+  rect(ctx, '#6fba9a', 61, 55, 2, 38);
+  rect(ctx, '#93ebba', 43, 50, 11, 2);
+  rect(ctx, '#a5edbd', 32, 94, 30, 2);
+  for (const [x, y, length] of [[34, 105, 18], [70, 105, 14], [145, 104, 15], [218, 105, 12]]) {
+    rect(ctx, '#4e6c6b', x, y, length, 1);
+  }
+  drawPlayer(ctx, {x: 111, y: 98, facing: 'down', moving: false}, 0);
+}
+
 function drawRoomProp(ctx, prop, x, y, active, time = 0) {
   ctx.save();
   ctx.translate(x, y);

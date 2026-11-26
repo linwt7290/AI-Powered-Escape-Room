@@ -1,7 +1,7 @@
 import {REPORT_FRAGMENTS} from './room.mjs';
 import {AIRLOCK_ACTIONS, canControlAirlock, initialAirlock} from './airlock.mjs';
 import {phrase} from './i18n.mjs';
-import {missingPassageStandards} from './passage-standards.mjs';
+import {missingPassageStandards, PASSAGE_STANDARDS} from './passage-standards.mjs';
 import {GRID_SIZE, passageFailures} from './puzzles.mjs';
 
 export const UNLOCK_REQUIREMENTS = [
@@ -59,6 +59,20 @@ export function canEchoAct(state, action) {
 
 export function validPipeNumber(value) {
   return Number.isInteger(value) && value >= 1 && value <= GRID_SIZE;
+}
+
+export function objectiveProgress(state) {
+  if (state.routeRejected || state.escaped || state.unlocked || state.airlock?.authorized) return;
+  if (state.coolingRestored && !state.passageSafe && state.standards) {
+    const missing = missingPassageStandards(state.standards);
+    const total = Object.keys(PASSAGE_STANDARDS).length;
+    return {kind: 'standards', count: total - missing.length, total, missing};
+  }
+  if (state.password && !state.reportConfirmed && !state.reportOpen && Array.isArray(state.reportFragments)) {
+    const fragments = Object.keys(REPORT_FRAGMENTS);
+    const missing = fragments.filter(id => !state.reportFragments.includes(id));
+    return {kind: 'fragments', count: fragments.length - missing.length, total: fragments.length, missing};
+  }
 }
 
 export function currentObjective(state) {
