@@ -873,4 +873,13 @@ kbd {
   pointer-events: none;
 }
 #reportFragmentPreview { display: block; }
+#reportText {
+  position: static;
+  grid-column: 1 / -1;
+  width: auto;
+  height: auto;
+  min-height: 224px;
+  margin: 0;
+  pointer-events: auto;
+}
 #reportFragmentPreview .report-tile { width: 50%; margin: auto; }

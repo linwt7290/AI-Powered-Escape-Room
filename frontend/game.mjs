@@ -45,6 +45,8 @@ const terminal = byId('terminalDialog');
 const notebook = byId('journalDialog');
 const chat = byId('echoDialog');
 const passage = byId('passageDialog');
+const propDialog = byId('propDialog');
+const echoParentPanels = [terminal, notebook, passage, coolingDialog, sparesDialog, propDialog, byId('reportFragmentDialog')];
 const evidenceCards = byId('evidenceCards');
 const notebookHost = notebook.querySelector('[data-evidence-host]');
 const routeEvidence = [...document.querySelectorAll('[data-route-reading]')];
@@ -142,12 +144,13 @@ const airlockPanel = createAirlockPanel(() => state, publishAirlockEvent, () => 
   render();
   openPanel(passage);
 });
-const roomProps = createRoomProps(openPanel, render, () => state.standards, prop => openEcho({airlock: false, prop}));
+const roomProps = createRoomProps(openPanel, render, () => state.standards);
 const reportFragments = createReportFragments(() => state, () => incidentReport(incident.kind, locale()), () => {
   state.reportOpen = true;
-  setTerminalNotice('事故报告已拼完整。请阅读并确认已阅。');
+  state.reportConfirmed = true;
+  setTerminalNotice('去维修间，从维修柜取得冷却耦合器。');
   render();
-  byId('confirmReport').focus();
+  byId('reportText').focus();
 });
 localText(byId('journalClue'), LOG_CLUE);
 
@@ -293,16 +296,14 @@ function render() {
   }
   byId('recoverySummary').textContent = t(FLOW_RESULT) + ' ' + t(state.passageSafe
     ? phrase('{route} 通道通过检测。', {route: state.route}) : '出口通道待检测。');
-  byId('reportText').textContent = byId('reportSummary').textContent = incidentReport(incident.kind, locale());
+  byId('reportSummary').textContent = incidentReport(incident.kind, locale());
   byId('scan').disabled = state.identity;
   localText(byId('scanStatus'), state.identity ? '身份已验证' : '等待身份验证');
   code.disabled = byId('submitCode').disabled = !state.identity || !state.journal || !state.archiveRecovered || state.password;
   byId('report').disabled = !state.password || state.reportOpen;
-  byId('reportFragments').hidden = !state.password || state.reportOpen;
-  byId('reportView').hidden = !state.reportOpen;
+  byId('reportFragments').hidden = !state.password;
+  localText(byId('reportFragmentsTitle'), state.reportOpen ? '事故报告' : '事故报告残页');
   reportFragments.render();
-  byId('confirmReport').disabled = state.reportConfirmed;
-  localText(byId('confirmReport'), state.reportConfirmed ? '已确认' : '确认已阅');
   byId('openEcho').disabled = state.escaped;
   byId('stateTrace').textContent = JSON.stringify({...state, room: player.room}, null, 2);
   devices.render();
@@ -554,14 +555,6 @@ byId('report').addEventListener('click', () => {
     ? '残页已找齐。将它们拼回事故报告。'
     : '按终端列出的位置找回残页，再回来拼接。');
 });
-byId('confirmReport').addEventListener('click', () => {
-  if (!state.reportOpen) return;
-  state.reportConfirmed = true;
-  setTerminalNotice('已确认事故报告。去维修间，从维修柜取得冷却耦合器。');
-  render();
-  terminal.close();
-});
-
 function addTurn(role, text, localized = role === 'device') {
   const article = document.createElement('div');
   const author = document.createElement('strong');
@@ -587,13 +580,15 @@ function publishAirlockEvent(outcome) {
   render();
 }
 
-function openEcho({airlock = player.room === 'exit' && state.airlock.authorized && !state.unlocked, prop} = {}) {
-  if (state.escaped || chat.open) return;
-  const passwordPanel = sparesDialog.open ? 'spares' : terminal.open ? 'terminal' : undefined;
+function openEcho({airlock = player.room === 'exit' && state.airlock.authorized && !state.unlocked} = {}) {
+  const underlyingPanel = echoParentPanels.find(panel => panel.open);
+  if (state.escaped || panels.some(panel => panel.open && panel !== underlyingPanel)) return;
+  const passwordPanel = underlyingPanel === sparesDialog ? 'spares' : underlyingPanel === terminal ? 'terminal' : undefined;
+  const prop = underlyingPanel === propDialog ? roomProps.echoContext : undefined;
   chat.dataset.console = prop ?? passwordPanel ?? (airlock ? 'airlock' : 'comms');
   renderComms();
   airlockPanel.render();
-  openPanel(chat, passwordPanel === 'spares' ? sparesDialog : passwordPanel === 'terminal' ? terminal : coolingDialog);
+  openPanel(chat, underlyingPanel);
   conversation.scrollTop = conversation.scrollHeight;
   if (desktopPointer.matches && !pending && !airlock) chatInput.focus();
 }
@@ -608,21 +603,14 @@ for (const id of ['recoverArchive', 'askScan']) {
       chatInput.focus();
       return;
     }
-    closeInlineEvidence();
-    source.close();
     openEcho();
   });
 }
 chat.addEventListener('close', () => {
   if (chat.open) return;
-  const prop = chat.dataset.console;
-  if (prop === 'microscope' || prop === 'photo' || prop === 'lights') {
-    chat.dataset.console = 'comms';
-    if (!gameScreen.hidden && player.room === OBJECTS[prop].room) roomProps.open(prop);
-    return;
-  }
-  if (chat.dataset.console !== 'airlock') return;
+  const wasAirlock = chat.dataset.console === 'airlock';
   chat.dataset.console = 'comms';
+  if (!wasAirlock) return;
   const outcome = leaveChamber(state.airlock, locale(), state);
   if (outcome) publishAirlockEvent(outcome);
 });
@@ -746,10 +734,10 @@ window.visualViewport?.addEventListener('scroll', syncViewport);
 
 window.addEventListener('keydown', event => {
   if (gameScreen.hidden || event.ctrlKey || event.altKey || event.metaKey || event.isComposing) return;
-  const passwordPanelOpen = terminal.open || sparesDialog.open;
   const editing = event.target instanceof Element && event.target.closest('input, textarea, [contenteditable]');
-  if (event.code === 'KeyQ' && !event.repeat && (!editing || passwordPanelOpen) &&
-      !panels.some(panel => panel.open && ![coolingDialog, terminal, sparesDialog].includes(panel))) {
+  const activePanel = panels.find(panel => panel.open);
+  if (event.code === 'KeyQ' && !event.repeat && !chat.open &&
+      (activePanel ? echoParentPanels.includes(activePanel) : !editing)) {
     event.preventDefault();
     openEcho();
     return;
