@@ -1,41 +1,114 @@
-# 最后的协议
+﻿# The Last Protocol · AI-Powered Escape Room
 
-COMP5140 课程项目。玩家调查被封锁的像素实验室，复原实验顺序，修复备用冷却并检查撤离通道，再用自由对话向中央 AI ECHO 申请放行。
+The Last Protocol is a COMP5140 course project. Explore a pixel-art laboratory, investigate an incident, restore backup cooling, and verify an evacuation route. Use natural language to coordinate your escape with ECHO, the lab's central AI.
 
-## 启动和操作
+**[Play The Last Protocol online](https://escape-with-echo.onrender.com/)**
 
-使用 Node.js 20.12.0 或以上，在仓库目录运行 `node server.mjs`，然后打开 [本地游戏](http://127.0.0.1:8788)。服务默认监听本机，端口可通过 `ECHO_PORT` 设置。
+## Quick Start
 
-- 用 WASD 或方向键移动，走进门洞即可换房间。靠近物件时按 E 调查，按 Q 打开 ECHO 通讯。移动端使用屏幕方向键和调查按钮。
-- 小地图标出门洞连线、当前位置和已到访房间。控制室四面都有门。从研究室可以往东直达控制室，也可以往南经值班室和设备走廊绕行。档案室和维修间都能通往撤离区。
-- 在研究室取得工作证和研究日志。从东门进入控制室，再穿过北门到档案室，请 ECHO 恢复机柜时序存档。用两份资料复原实验顺序，回控制室刷卡并解锁事故报告。
-- 阅读报告后，穿过控制室东门进入维修间。从维修柜取耦合器并试压。可以旋转管段自行修复，也可以请 ECHO 旁通本次试压标红的漏点，再试压。维修间的北门通往撤离区。
-- 请 ECHO 扫描 A、B 两条通道。三项验收标准位于设备走廊压差表、研究室显微镜和档案室合照背面。压差表需先校零，查看走廊左上角检修盒的便签，再逐档测试并向 ECHO 汇报相邻的通过档与拒绝档。显微镜需切换紫光、移动计数框对准金色角标、调焦并提交参照片读数，合照需查看夹层里的试运行连拍，找出联锁测试回执。卡住时可以向 ECHO 求助。可以问 ECHO 还缺什么、在哪里找，或查询扫描读数。
-- 在出口检测台选中已扫描的通道，核验已找到的标准并暂存路线。两条通道都扫描且集齐三项标准后，点击「启动撤离」进入缓冲舱。尝试放行前可以退出缓冲舱改选。内门关严后，若切电尝试放行未达标通道，则本局撤离失败。重开会重新抽取事故原因、数字、管路方向和达标通道。
-- 确认路线后打开缓冲舱控制台。门锁、联锁灯和 ECHO 通讯在同一屏，调查记录也可以随时展开。进舱后可以由玩家看灯并指挥切电，也可以安装维修柜里的备用传感器，让 ECHO 等内门关严后自动切电。
-- 过早切电会触发联锁，可退出缓冲舱复位。外门打开后，从亮起绿灯的一侧走过门槛。点击「重开一局」可开始新的调查。
+You need **Node.js 20.12.0 or later**. The project uses built-in Node.js modules. From the repository root, run the following command.
 
-## 代码结构
+```sh
+node server.mjs
+```
 
-| 路径 | 职责 |
+Open [http://127.0.0.1:8788](http://127.0.0.1:8788) to play. The default local demo mode uses built-in rules for ECHO's replies and device assistance. It requires no API key.
+
+## Controls and Gameplay
+
+| Action | Keyboard |
 | --- | --- |
-| `server.mjs` | 项目启动入口，运行 `node server.mjs` |
-| `frontend/` | 浏览器页面、玩家操作、像素绘制、设备面板和静态资源 |
-| `backend/` | HTTP 服务、ECHO 请求校验、模型调用和本地演示回复 |
-| `shared/` | 前后端共用的房间数据、游戏规则、谜题、缓冲舱状态和翻译 |
-| `tests/` | 自动化测试，在仓库根目录运行 `node --test` |
-| `docs/` | 联调记录和验收数据 |
+| Move | WASD or arrow keys |
+| Inspect a nearby object | E |
+| Open ECHO communications | Q |
 
-## ECHO 对话
+Walk through doorways to move between rooms. The minimap shows your current location and the rooms you've visited. On mobile, use the on-screen directional controls and inspect button.
 
-API 路径定义在 `shared/api-paths.mjs`，服务端的路由表位于 `backend/server.mjs`，浏览器通过 `frontend/echo/api.mjs` 调用配置检查和对话接口。
+1. **Investigate the incident.** Collect the staff badge and research log in the research lab. In the archives, ask ECHO to recover the cabinet's timing records. Use the clues to reconstruct the experiment sequence and unlock the incident report in the control room. Then collect the report fragments scattered throughout the lab. If you get stuck, ask ECHO where to look or review the clues you've already collected. Once you have all the fragments, return to the control room terminal to read the report.
+2. **Restore cooling.** Collect the coupler in the maintenance room and run a pressure test. Rotate pipe segments to repair the system, or ask ECHO to bypass the leak marked during the test.
+3. **Verify an evacuation route.** Ask ECHO to scan routes A and B. Find the acceptance criteria at the differential pressure gauge in the service corridor, the microscope in the research lab, and the group photo in the archives. Verify the criteria and select a route at the exit inspection station.
+4. **Evacuate.** Enter the airlock and wait for the inner door to close fully before cutting power. You can also install the spare door sensor so ECHO can cut power when the inner door closes. Once the outer door opens, step through on the side marked by the green light.
 
-在仓库根目录把 `.env.example` 复制为 `.env`（PowerShell 可运行 `Copy-Item .env.example .env`），然后在 `.env` 中填写自己的 `ECHO_API_BASE`、`ECHO_MODEL` 和 `ECHO_API_KEY`，再运行 `node server.mjs`。已有 `.env` 时直接编辑现有文件。修改配置后需重启服务。部署时也可直接注入同名环境变量，其优先级高于 `.env`。API 地址使用服务商提供的基础地址，服务会追加 `/chat/completions`。模型需支持 Chat Completions 和 JSON 对象响应。
+Starting a new game randomizes the cause of the incident, puzzle values, pipe orientations, and which route meets the evacuation criteria.
 
-未设置模型配置时，服务使用规则版「本地演示」完成设备协作和撤离核验，支持按报告措辞分轮作答。
+## Model Setup
 
-游戏设置中的 `ECHO_API_BASE` 和 `ECHO_MODEL` 可留空，留空时采用服务端默认值。填写的地址需与服务端的 `ECHO_API_BASE` 一致，模型可按浏览器分别设置。API 密钥由服务端配置。
+**Online play requires no API key.** To use DeepSeek with a local installation, provide your own DeepSeek API key.
 
-展开「调试记录」可查看游戏状态、最近一轮 ECHO 决策及设备回执。模型依据当前进度、对话和可用动作选择响应。服务端校验提交的状态快照和动作，浏览器执行时按最新状态复核，并将设备变化写回下一轮。
+Copy [`.env.example`](.env.example) to `.env` in the repository root. In PowerShell, run `Copy-Item .env.example .env`. Fill in the model settings and restart the server.
 
-[成员 3 LLM 智能系统联调记录](./docs/成员3-LLM联调记录.md)收录了输入输出、设备状态变化、异常分支和真实模型复测场景。
+| Variable | Purpose |
+| --- | --- |
+| `ECHO_API_BASE` | Provider API base URL. The server appends `/chat/completions`. |
+| `ECHO_MODEL` | Model ID. The model must support Chat Completions and JSON object responses. |
+| `ECHO_API_KEY` | API key used by the server. |
+| `ECHO_PORT` | Local port. Defaults to `8788`. |
+| `PORT` | Port supplied by the hosting environment. It takes precedence over `ECHO_PORT` and binds the server to `0.0.0.0`. |
+
+Process environment variables take precedence over `.env`. Leave the API base URL and model blank in the game settings to use the server defaults. If you enter an API base URL in the browser, it must match the server configuration. Configure the API key on the server.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    Player["Player"] --> UI["Browser game and device panels"]
+    UI -->|"State snapshot and conversation"| Server["Node.js HTTP server"]
+    Server -->|"Reply and validated actions"| UI
+    Shared["Shared room data, puzzles, and rules"] --- UI
+    Shared --- Server
+    Server --> Model["Model API"]
+    Server --> Demo["Local demo logic"]
+```
+
+### How ECHO Helps Solve Puzzles
+
+The browser sends the player's message and a game state snapshot to the server. The server uses the player's progress and available actions to generate a response. ECHO can report scan readings, recover timing records, and help operate devices. The model prompt supplies the game context. The server validates proposed actions, and the browser checks them again against the current state before executing them. The outcome of each device action is included in the next turn so ECHO can respond to what actually happened.
+
+```mermaid
+flowchart TD
+    Input["Player asks a question or gives ECHO an instruction"] --> State["Server validates the game state"]
+    State --> Mode{"Server mode"}
+    Mode -->|"Model"| Prompt["Generate a structured response from the game context"]
+    Mode -->|"Local demo"| Rules["Generate a response using built-in rules"]
+    Prompt --> Action["Validate proposed actions"]
+    Rules --> Action
+    Action --> Apply["Browser rechecks and executes actions"]
+    Apply --> Receipt["Display the reply and record device outcomes"]
+```
+
+The in-game debug log shows the game state, ECHO's latest decision, and the results of device actions. See the [LLM integration notes (Chinese)](docs/成员3-LLM联调记录.md) for model integration scenarios and error cases.
+
+### HTTP API
+
+| Method and path | Purpose |
+| --- | --- |
+| `GET /api/health` | Check whether ECHO is configured and which mode is active. |
+| `POST /api/echo/config` | Check the ECHO configuration. |
+| `POST /api/echo` | Send the game state and a player message to get ECHO's response. |
+
+## Tech Stack and Repository Layout
+
+| Layer | Technology and responsibilities |
+| --- | --- |
+| Frontend | HTML, CSS, and JavaScript ES modules for map rendering, player controls, and device panels. |
+| Backend | Node.js built-in HTTP module for serving static files, validating requests, and calling the model API. |
+| AI | Chat Completions-compatible model API with a rule-based local demo mode. |
+| Testing | Node.js built-in test runner for rooms, airlock behavior, ECHO debug logs, and evacuation flows. |
+
+```text
+.
+├── server.mjs       # Server entry point
+├── frontend/        # Game UI, rendering, device panels, and static assets
+├── backend/         # HTTP server, ECHO context, and local demo logic
+├── shared/          # Shared rooms, puzzles, rules, and translations
+├── tests/           # Automated tests
+└── docs/            # Integration notes and acceptance test data
+```
+
+Run the tests from the repository root.
+
+```sh
+node --test
+```
+
+Font licenses are available in the [font licenses directory](frontend/assets/fonts/licenses/) and the [OFL text](frontend/assets/fonts/OFL.txt).

@@ -709,6 +709,7 @@ kbd {
 .chat-form textarea { flex: 1; min-width: 0; min-height: 36px; max-height: 100px; padding: 6px 8px; resize: vertical; font-size: 16px; }
 .chat-status { color: var(--amber); margin: 0 15px 7px; font-size: 12px; }
 .ending-panel { text-align: center; }
+.ending-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
 .ending-panel .panel-body { padding: 27px 16px; }
 .ending-panel p { margin: 7px 0 16px; color: var(--muted); }
 #endingEcho { color: #b8ecd9; }

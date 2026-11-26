@@ -894,6 +894,17 @@ byId('endingDialog').addEventListener('cancel', event => {
   if (state.routeRejected) event.preventDefault();
 });
 byId('playAgain').addEventListener('click', reset);
+let gameFrame;
+byId('returnHome').addEventListener('click', () => {
+  cancelAnimationFrame(gameFrame);
+  pending?.abort();
+  pending = undefined;
+  clearMovement();
+  panels.forEach(panel => panel.close());
+  gameScreen.hidden = true;
+  titleScreen.hidden = false;
+  byId('startGame').focus();
+});
 byId('startGame').addEventListener('click', () => openPanel(intro));
 byId('enterLab').addEventListener('click', () => {
   if (!gameScreen.hidden) return;
@@ -905,7 +916,7 @@ byId('enterLab').addEventListener('click', () => {
   checkConnection();
   byId('gameTitle').focus();
   lastFrame = performance.now();
-  requestAnimationFrame(frame);
+  gameFrame = requestAnimationFrame(frame);
 });
 
 function frame(time) {
@@ -941,7 +952,7 @@ function frame(time) {
 
   paint(state, player, opening, pending, visualTime, roomProps.active);
   if (chat.open) drawEcho(portrait, state.unlocked ? 'granted' : pending ? 'busy' : 'idle', visualTime);
-  requestAnimationFrame(frame);
+  gameFrame = requestAnimationFrame(frame);
 }
 
 applyLanguage();

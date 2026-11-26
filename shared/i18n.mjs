@@ -356,6 +356,7 @@ const english = {
   '进入实验室': 'Enter the lab',
   '实验室': 'Laboratory',
   '重开一局': 'Restart',
+  '返回主页': 'Back to home',
   '设置': 'Settings',
   '界面语言': 'Language',
   'ECHO 连接': 'ECHO connection',
