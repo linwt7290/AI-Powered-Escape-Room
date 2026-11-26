@@ -53,7 +53,7 @@ const switches = {
   lights: {labels: ['切换到暖光', '切换到冷光'], notices: ['走廊切换到冷光。', '走廊切换到暖光。']}
 };
 
-export function createRoomProps(openPanel, onEvidenceFound, getStandards, openPropEcho) {
+export function createRoomProps(openPanel, onEvidenceFound, getStandards) {
   const panel = document.getElementById('propDialog');
   const title = document.getElementById('propTitle');
   const description = document.getElementById('propDescription');
@@ -297,18 +297,6 @@ export function createRoomProps(openPanel, onEvidenceFound, getStandards, openPr
     }
     renderPhoto();
   });
-  window.addEventListener('keydown', event => {
-    if (!panel.open || event.code !== 'KeyQ' || event.repeat || event.isComposing ||
-        event.ctrlKey || event.altKey || event.metaKey) return;
-    const inspecting = selected === 'microscope' || selected === 'photo' && photoSheet.open ||
-      selected === 'lights' && gauge.open;
-    if (!inspecting) return;
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    panel.close();
-    openPropEcho(selected);
-  }, {capture: true});
-
   const gauge = document.getElementById('pressureGauge');
   const dial = document.getElementById('gaugeDial');
   const zeroMode = document.getElementById('gaugeZeroMode');
@@ -516,6 +504,10 @@ export function createRoomProps(openPanel, onEvidenceFound, getStandards, openPr
       return {violet: Boolean(active.microscope), focused: focus === targetFocus, aligned: aligned(), lastCount};
     },
     get active() { return active; },
+    get echoContext() {
+      if (selected === 'microscope' || selected === 'photo' && photoSheet.open ||
+          selected === 'lights' && gauge.open) return selected;
+    },
     open(id) {
       selected = id;
       if (id === 'inspectionBox') gaugeNoteFound = true;
@@ -576,6 +568,8 @@ export function createReportFragments(getState, getReport, onAssembled) {
   const board = byId('reportBoard');
   const tray = byId('reportTray');
   const status = byId('reportAssemblyStatus');
+  const help = byId('reportAssemblyHelp');
+  const completedPaper = byId('reportText');
   const preview = byId('reportFragmentPreview');
   const placed = new Set();
   const trayOrder = [2, 0, 3, 1];
@@ -681,14 +675,18 @@ export function createReportFragments(getState, getReport, onAssembled) {
 
   function render() {
     const state = getState();
-    assembly.hidden = state.reportFragments.length < fragmentIds.length;
+    assembly.hidden = !state.reportOpen && state.reportFragments.length < fragmentIds.length;
+    locations.hidden = help.hidden = tray.hidden = status.hidden = state.reportOpen;
+    completedPaper.hidden = !state.reportOpen;
     const report = getReport();
+    completedPaper.textContent = report;
     for (const [index, key] of fragmentIds.entries()) {
       const collected = state.reportFragments.includes(key);
       const room = t(ROOMS[REPORT_FRAGMENTS[key].room].name);
       localText(entries[index], phrase(collected ? '{room} · 已拾取' : '{room} · 待找回', {room}));
       pieces[index].setAttribute('aria-label', t(phrase('残页 · {room}', {room})));
       slots[index].setAttribute('aria-label', t(phrase('底板位置 {position}', {position: index + 1})));
+      slots[index].hidden = state.reportOpen;
       (placed.has(index) ? slots[index] : pieces[index]).firstElementChild.textContent = report;
     }
     if (previewIndex !== undefined) preview.firstElementChild.firstElementChild.textContent = report;
