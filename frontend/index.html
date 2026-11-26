@@ -129,15 +129,11 @@
 
   <dialog class="panel journal-panel intro-panel" id="introDialog" aria-labelledby="introTitle">
     <header class="panel-header">
-      <h2 id="introTitle">夜班交接信</h2>
-      <button class="button close" type="button" data-close aria-label="合上交接信">×</button>
+      <h2 id="introTitle">实验室封锁</h2>
+      <button class="button close" type="button" data-close aria-label="关闭开场说明">×</button>
     </header>
     <div class="panel-body intro-letter">
-      <p>给接班的研究员</p>
-      <p>警报响了三次，出口就封上了。我只来得及在广播里听清一句话。「撤离协议尚未完成。」</p>
-      <p>ECHO 还在线，也能操作实验室的设备。把你亲眼看到的情况告诉它，你们能一起查清发生了什么。</p>
-      <p>工作证和研究日志都在研究室的办公桌上。先把它们拿上。</p>
-      <p class="intro-signature">上一班值班员</p>
+      <p>你误闯进一间实验室。警报响起，出口随即封锁。</p>
       <button class="button primary" id="enterLab" type="button" autofocus>进入实验室</button>
     </div>
   </dialog>
@@ -179,6 +175,15 @@
     </header>
     <div class="panel-body evidence-body" data-evidence-host>
       <div id="evidenceCards" class="evidence-cards">
+        <details id="handoverEvidence" hidden>
+          <summary>值班交接纸条</summary>
+          <div class="inset intro-letter">
+            <p>给接班的人</p>
+            <p>主冷却刚才报过一次警，我去值班室核对记录。工作证留在桌上。</p>
+            <p>如果终端弹出封锁提示，按 Q 联系 ECHO。它知道哪些设备还在运行。</p>
+            <p class="intro-signature">上一班值班员</p>
+          </div>
+        </details>
         <details id="journalEvidence" hidden>
           <summary>研究日志</summary>
           <dl class="journal-entries" id="experimentDigits"></dl>
@@ -217,7 +222,7 @@
     </header>
     <div class="panel-body terminal">
       <div class="terminal-row">
-        <span id="scanStatus">等待身份验证</span>
+        <span id="scanStatus">等待验证工作证</span>
         <button class="button" id="scan" type="button">刷工作证</button>
       </div>
       <form id="codeForm" class="code-form">

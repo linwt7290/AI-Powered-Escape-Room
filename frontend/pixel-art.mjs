@@ -726,6 +726,13 @@ export function createPainter(canvas) {
       drawRoomProp(ctx, 'inspectionBox', x, y - 20);
     }
     if (room === 'exit') drawDoor(ctx, opening, state.unlocked ? state.route : null);
+    if (room === 'research') {
+      const [x, y] = OBJECTS.handover.frame;
+      rect(ctx, '#776b52', x + 2, y + 2, 11, 8);
+      rect(ctx, '#d4c39b', x + 1, y + 1, 11, 8);
+      rect(ctx, '#716c56', x + 3, y + 3, 7, 1);
+      rect(ctx, '#716c56', x + 3, y + 5, 5, 1);
+    }
     if (room === 'research' && !state.card) {
       rect(ctx, '#7e634c', 104, 123, 10, 7);
       rect(ctx, '#f1dca9', 104, 122, 10, 6);

@@ -70,6 +70,7 @@ export const REPORT_FRAGMENTS = {
 export const OBJECTS = {
   inspectionBox: {room: 'service', x: 76, y: 92, anchor: 64, frame: inspectionBoxFrame, label: '检查检修盒', title: '检修盒'},
   card: {room: 'research', x: 108, y: 153, anchor: 113, frame: [103, 121, 13, 9], label: '拾取工作证'},
+  handover: {room: 'research', x: 177, y: 153, anchor: 111, frame: [170, 120, 15, 11], label: '阅读交接纸条'},
   journal: {room: 'research', x: 153, y: 153, anchor: 112, frame: [143, 116, 20, 16], label: '阅读研究日志'},
   rack: {room: 'archive', x: 87, y: 77, anchor: 29, frame: [67, 30, 36, 46], label: '读取机柜存档'},
   locker: {room: 'maintenance', x: 127, y: 190, anchor: 164, frame: [93, 167, 34, 47], label: '检查维修柜'},

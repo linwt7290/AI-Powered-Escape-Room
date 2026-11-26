@@ -43,19 +43,38 @@ export function reportGuidance(state, locale, room) {
     return say('请在终端打开事故报告并确认已阅。');
   }
   const remaining = Object.entries(REPORT_FRAGMENTS).filter(([key]) => !state.reportFragments.includes(key));
-  const targetRoom = remaining[0]?.[1].room ?? 'control';
   const directions = {north: '北门', south: '南门', east: '东门', west: '西门'};
-  const door = room && nextDoor(room, targetRoom);
-  const path = door ? say('先从{direction}进入{room}。', {
-    direction: say(directions[door]), room: say(ROOMS[ROOMS[room].doors[door]].name)
-  }) : '';
-  const hint = remaining.length
-    ? say('报告还缺 {count} 块残页，去这些房间找：{rooms}。取齐后回控制室的安全终端拼接。', {
-      count: remaining.length,
-      rooms: remaining.map(([, fragment]) => say(ROOMS[fragment.room].name)).join(locale === 'en' ? ', ' : '、')
-    })
-    : say('残页已经找齐。回控制室的安全终端，对齐纸边和断开的文字，拼好后点击「确认已阅」。');
-  return [hint, path].filter(Boolean).join(' ');
+  function routeTo(target) {
+    const path = [];
+    for (let from = room; from && from !== target;) {
+      const door = nextDoor(from, target);
+      if (!door) break;
+      from = ROOMS[from].doors[door];
+      path.push(say('从{direction}进入{room}', {
+        direction: say(directions[door]), room: say(ROOMS[from].name)
+      }));
+    }
+    return path;
+  }
+  const joinRoute = path => path.join(locale === 'en' ? ', then ' : '，再');
+  if (!remaining.length) {
+    const path = routeTo('control');
+    const hint = say('四块残页已经找齐。回控制室的安全终端拼接，完成后点击「确认已阅」。');
+    return path.length ? hint + ' ' + say('{path}。', {path: joinRoute(path)}) : hint;
+  }
+
+  const targets = remaining.map(([, fragment]) => ({room: fragment.room, path: routeTo(fragment.room)}));
+  const next = targets.reduce((nearest, target) => target.path.length < nearest.path.length ? target : nearest);
+  const total = Object.keys(REPORT_FRAGMENTS).length;
+  const progress = say('已拾取 {count}/{total} 块残页。还没找的房间有{rooms}。', {
+    count: total - remaining.length, total,
+    rooms: targets.map(target => say(ROOMS[target.room].name)).join(locale === 'en' ? ', ' : '、')
+  });
+  const nextHint = next.room === room ? say('这里还有一块残页，先在当前房间找。')
+    : next.path.length ? say('接下来找{room}的残页。{path}。', {
+      room: say(ROOMS[next.room].name), path: joinRoute(next.path)
+    }) : say('接下来去{room}找残页。', {room: say(ROOMS[next.room].name)});
+  return progress + ' ' + nextHint;
 }
 
 export function demoDecision(state, history, message, incident, locale = DEFAULT_LOCALE, verification = verifyEvacuation(state, history.filter(turn => turn.role === 'user').map(turn => turn.content), message, incident)) {
@@ -68,7 +87,7 @@ export function demoDecision(state, history, message, incident, locale = DEFAULT
       /机柜|存档|记录|server|archive|record/i.test(request) && canEchoAct(state, 'recover_archive')) {
     return reply('正在尝试修复机柜的时序记录。', 'recover_archive');
   }
-  if (!state.card) return reply('检查研究室办公桌上的文件夹，找到你的工作证。');
+  if (!state.card) return reply('检查研究室办公桌上的文件夹，找到值班员留下的工作证。');
   if (!state.journal) return reply('查阅研究室桌上的日志，记录实验编号和先后关系。');
   if (!state.rack) return reply('从控制室北门进入档案室，读取机柜存档。它记录了另一组实验的先后关系。');
   if (!state.archiveRecovered) return reply('存档数据已损坏。你可以请我恢复机柜存档。');

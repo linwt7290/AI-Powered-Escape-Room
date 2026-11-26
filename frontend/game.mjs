@@ -274,9 +274,10 @@ function render() {
     localText(item, clue.reading);
     return item;
   }));
-  const hasEvidence = Boolean(standards.length) || state.journal || state.rack || state.reportConfirmed || state.coolingRestored || roomProps.active.shiftLog;
+  const hasEvidence = state.handoverRead || Boolean(standards.length) || state.journal || state.rack || state.reportConfirmed || state.coolingRestored || roomProps.active.shiftLog;
   byId('journalSlot').disabled = !hasEvidence || state.escaped;
   for (const button of evidenceButtons) button.disabled = byId('journalSlot').disabled;
+  byId('handoverEvidence').hidden = !state.handoverRead;
   byId('journalEvidence').hidden = !state.journal;
   byId('rackEvidence').hidden = !state.rack;
   localText(byId('rackClue'), state.archiveRecovered ? RACK_CLUE : '归档数据损坏。请 ECHO 远程恢复时序记录。');
@@ -295,7 +296,7 @@ function render() {
     ? phrase('{route} 通道通过检测。', {route: state.route}) : '出口通道待检测。');
   byId('reportText').textContent = byId('reportSummary').textContent = incidentReport(incident.kind, locale());
   byId('scan').disabled = state.identity;
-  localText(byId('scanStatus'), state.identity ? '身份已验证' : '等待身份验证');
+  localText(byId('scanStatus'), state.identity ? '工作证已验证' : '等待验证工作证');
   code.disabled = byId('submitCode').disabled = !state.identity || !state.journal || !state.archiveRecovered || state.password;
   byId('report').disabled = !state.password || state.reportOpen;
   byId('reportFragments').hidden = !state.password || state.reportOpen;
@@ -449,6 +450,13 @@ for (const panel of panels) {
 }
 
 const actions = {
+  handover() {
+    if (!state.handoverRead) {
+      state.handoverRead = true;
+      setMessage('已收录值班交接纸条。');
+    }
+    openNotebook('handoverEvidence');
+  },
   card() {
     state.card = true;
     player.pickupUntil = performance.now() + 240;
@@ -485,7 +493,7 @@ const actions = {
     if (state.identity && !state.password) {
       setTerminalNotice(state.journal && state.archiveRecovered
         ? '按实验发生顺序读取对应编号。调查记录可以随时回看。'
-        : '身份已验证。查阅研究日志，并请 ECHO 恢复机柜存档。');
+        : '工作证已验证。查阅研究日志，并请 ECHO 恢复机柜存档。');
     }
     openPanel(terminal);
   },
@@ -517,7 +525,7 @@ function interact() {
 roomAction.addEventListener('click', interact);
 touchAction.addEventListener('click', interact);
 byId('cardSlot').addEventListener('click', () => {
-  setMessage(state.identity ? '身份已验证。' : '已取得研究员工作证。请到安全终端刷卡。');
+  setMessage(state.identity ? '工作证已验证。' : '已取得值班员留下的工作证。请到安全终端刷卡。');
 });
 byId('journalSlot').addEventListener('click', () => openNotebook());
 
@@ -527,8 +535,8 @@ byId('scan').addEventListener('click', () => {
     return;
   }
   state.identity = true;
-  setTerminalNotice(state.journal && state.archiveRecovered ? '身份已验证。请按实验顺序输入四位密码。'
-    : '身份已验证。查阅研究日志，并请 ECHO 恢复机柜存档。');
+  setTerminalNotice(state.journal && state.archiveRecovered ? '工作证已验证。请按实验顺序输入四位密码。'
+    : '工作证已验证。查阅研究日志，并请 ECHO 恢复机柜存档。');
   render();
   if (!code.disabled) code.focus();
 });
@@ -568,7 +576,7 @@ function addTurn(role, text, localized = role === 'device') {
   const body = document.createElement('p');
   article.className = 'turn';
   article.dataset.role = role;
-  localText(author, role === 'user' ? '研究员' : role === 'device' ? '设备回执' : 'ECHO');
+  localText(author, role === 'user' ? '访客' : role === 'device' ? '设备回执' : 'ECHO');
   if (localized) localText(body, text);
   else body.textContent = text;
   article.append(author, body);
@@ -689,7 +697,7 @@ byId('chatForm').addEventListener('submit', async event => {
     ...(confirmingPressure && {intent: 'confirm_pressure_criterion'}),
     incident: {kind: incident.kind, preferredScan: incident.preferredScan, safeRoute: incident.safeRoute}
   };
-  if (player.room === 'service') payload.state.gauge = {...roomProps.gaugeContext(), inspecting: chat.dataset.console === 'lights'};
+  payload.state.gauge = {...roomProps.gaugeContext(), inspecting: chat.dataset.console === 'lights'};
   if (player.room === 'archive') payload.state.photo = {...roomProps.photoContext(), inspecting: chat.dataset.console === 'photo'};
   if (player.room === 'research') payload.state.microscope = {...roomProps.microscopeContext(), inspecting: chat.dataset.console === 'microscope'};
   const turn = addTurn('user', message);

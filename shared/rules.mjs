@@ -18,7 +18,7 @@ export const ECHO_ACTIONS = [
 
 export function initialState() {
   return {
-    card: false, journal: false, rack: false, archiveRecovered: false, identity: false, password: false,
+    handoverRead: false, card: false, journal: false, rack: false, archiveRecovered: false, identity: false, password: false,
     reportFragments: [], reportOpen: false, reportConfirmed: false, coupler: false, coolingRestored: false, coolingFaultRow: null,
     alignedPipe: false, scannedA: false, scannedB: false,
     passageSafe: false, route: null, standards: {}, selectedRoute: null, routeFailure: null,

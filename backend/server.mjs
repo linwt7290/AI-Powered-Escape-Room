@@ -55,7 +55,7 @@ const instructions = `你是密室游戏的中央 AI ECHO。以系统给出的�
 如果现有信息无法回答玩家的问题、也无法给出有根据的提示，选择 reply 动作，并在 reply 字段中写「我不知道」。
 你可以按上下文申请设备动作。玩家求助于损坏的机柜存档时选择 recover_archive。请求校准管路时选择 align_pipe，只调一段。请求扫描时，明确指定 A 或 B 就选择相应的 scan_route_a 或 scan_route_b。请求扫描两条时选择 scan_route_both。passageEvidence 列出了玩家已取得的标准或缺项位置，按它回应查询。selectedRoute 是玩家选定的路线。让玩家自己比对读数并确认路线。未指定时，可据对话选择其中一条，preferredScan 是本局的调度建议。已完成扫描的通道可引导玩家去检测台读数。设备动作的结果由游戏显示，请描述待执行动作，把实际结果留给设备回执。
 根据进度给提示。玩家只问「下一步」或「接下来做什么」时，以 currentState.objective 为准，用一句话提示该目标对应的一项操作，必要时附上走法。专门询问密码、设备或证据时，按对应规则回答。只有玩家明确询问后续流程时才展开。玩家问「密码多少」「密码是什么」或「怎么推导密码」时，一律视为解谜求助，选择 reply，直接按当前进度给一条提示，不要以「我不知道」开头，也不要报出密码或完整实验顺序。journal 为 false 时，引导去研究室办公桌查看研究日志。日志已有而 archiveRecovered 为 false 时，rack 为 false 则引导去档案室调查机柜，rack 为 true 则提示可以请 ECHO 恢复机柜存档。两份线索齐备时，提示把两份记录里的先后关系合起来，排出实验顺序，再按顺序读取对应编号。备用冷却修复后，引导玩家扫描并比较通道。unlocked 或 escaped 为 true 时只回复。
-研究室有工作证与研究日志，控制室有安全终端，档案室有机柜存档，维修间有备用冷却与备件柜，撤离区有检测台。location 是玩家所在的房间。有需要时按这张门牌图引路：${roomLayout}。
+玩家是误闯实验室的访客，工作证是上一班值班员留在桌上的，终端核验的是工作证权限。研究室办公桌还有值班交接纸条和研究日志，控制室有安全终端，档案室有机柜存档，维修间有备用冷却与备件柜，撤离区有检测台。location 是玩家所在的房间。有需要时按这张门牌图引路：${roomLayout}。
 放行核验只认服务端给出的 evacuationMissing。请求放行或补报证据时，若有缺项，只引导去对应设备查找并汇报：封锁原因去控制室的事故报告，备用冷却去维修间看试压结果，达标通道去出口检测台看登记结果。询问证据出处时只给查找位置，不复述谜题答案或让玩家照抄。三项齐备且 availableActions 含 request_unlock 时，玩家提出申请或补齐证据可选择该动作。
 通道问题使用 passage 的阈值和已扫描读数。问为何登记被拒时，结合 rejectedRoute 或玩家明确提到的通道解释失败项。只有已扫描的通道才有读数。单问所在位置时只答位置；同时问目标或方向时，依据 objective、objectiveRoom 和 objectiveDirection 补充下一步走法；airlock.inChamber 为 true 时可具体到缓冲舱。外门已开后问下一步，提示关闭面板、沿绿灯撤离。
 状态含 airlock 时，request_unlock 只签发缓冲舱授权，外门仍关闭。授权后，你能切换门控电源，备用电源一次只能供一道门。open_outer_on_entry 表示玩家明确要求一进舱就切电；open_outer_after_inner_closed 表示明确要求等内门关严或联锁灯变绿后再切电，且该动作需要传感器在线。open_outer_now 表示玩家明确要求立刻切电，或已给出等待条件且传感器确认 innerDoorClosed=true。保留玩家指定的触发时机。只谈「怎么」或「为什么」、询问日志、未要求执行或时机有歧义时只回复。对于「怎么打开外门？」之类的宽泛求助，如果玩家还没有提到日志、联锁失败、内门或指示灯，只引导去读检测台旁的旧门控日志，不透露正确指示灯颜色和切电条件。玩家引用具体线索或描述试验结果后，可以解释它。innerDoorClosed=null 仅表示没有传感器读数。现场面板由玩家观察。传感器离线时，你无法自行读取内门或联锁灯状态，也无法登记自动等待内门关严。玩家明确报告绿灯或内门关严时，可以提示其明确下令切电。可以由玩家观察现场指示灯后要求立即切电。若玩家要求「进舱就切电」，登记其指令，是否被联锁拒绝以设备回执为准。
@@ -186,10 +186,13 @@ const scanIntents = {scan_a: 'A', scan_b: 'B', scan_other: 'other', scan_any: 'a
 const intentInstructions = `
 额外返回 intent 字段，用以下枚举判断本轮意图。根据玩家原话和对话理解省略与指代。游戏状态只用于判断上下文，不能当作玩家授权。
 - next_step：询问现在该做什么；main_step：明确问主线而非手上的支线；evacuation_blocked：询问为什么无法启动撤离。
+- handover_note：明确询问开局的值班交接纸条在哪里或怎样回看。检修盒的便签不属于这个意图。
 - terminal_password：明确询问安全终端密码或其推导。spares_password：明确询问维修柜备件格密码。只问密码而指代不明时使用 password_help。
 - incident_report：询问如何查看事故报告、找回残页、拼接或确认已阅。询问事故原因或报告内容属于自由对话。
 - clue_progress：问还缺哪些撤离验收线索；readings_location：问去哪里查看通道扫描实测读数。询问压差验收标准或上限线索与查询扫描读数是两回事。
 - scan_a、scan_b、scan_both、scan_other、scan_any：明确要求扫描指定通道、两条、另一条或任意一条。询问如何扫描、读数或后果不算执行请求。
+- microscope_purpose：只询问显微镜的用途，不包括使用步骤或读数。
+- coupler_purpose、sensor_purpose：询问冷却耦合器或门位传感器的含义、用途。coupler_location：询问冷却耦合器的位置、取得方式。单问下一步仍按进度处理。
 - sensor_location：询问备用门位传感器在哪里、如何取得或在哪里安装。
 - airlock_status：询问当前缓冲舱门、联锁灯或门位传感器状态。
 - airlock_now、airlock_on_entry、airlock_after_close：明确要求现在、进舱时、内门关严后切电。条件必须来自玩家指令。
@@ -220,7 +223,9 @@ async function dispatchEcho(params, recognizedIntent, modelDecision) {
     context.reportFragmentRooms = Object.entries(REPORT_FRAGMENTS)
       .filter(([key]) => !snapshot.reportFragments.includes(key)).map(([, fragment]) => translate(locale, ROOMS[fragment.room].name));
   }
-  const mainStep = recognizedIntent === 'main_step' || /^(?:主线|主流程)(?:任务|进度)?(?:[，,：:\s]*)(?:的)?(?:下一步|接下来|现在|目标|到哪|是什么)?[呢吗？?。！!]*$/i.test(message.trim()) ||
+  const handoverFollowUp = /交接(?:纸条|信|便签)|handover (?:note|letter)/i.test(message) &&
+    /(?:然后呢|之后呢|接下来(?:呢|做什么)?|下一步(?:呢|做什么)?|(?:该|要)(?:做什么|去哪)|what (?:next|should I do)|where (?:next|should I go))[？?。.!！]*$/i.test(message.trim());
+  const mainStep = handoverFollowUp || recognizedIntent === 'main_step' || /^(?:主线|主流程)(?:任务|进度)?(?:[，,：:\s]*)(?:的)?(?:下一步|接下来|现在|目标|到哪|是什么)?[呢吗？?。！!]*$/i.test(message.trim()) ||
     /^(?:(?:我)?(?:现在)?的?主线|主流程).{0,12}(?:下一步|进度|目标)|^(?:main (?:objective|quest|progress)|what.*main (?:objective|quest))/i.test(message.trim());
   const airlockFollowUp = snapshot.airlock?.authorized &&
     /^(?:内门|联锁灯|绿灯|the inner door|the interlock light)[^？?。.!！]{0,40}(?:然后呢|接下来呢|下一步(?:呢|做什么)?|what next|what should I do next)[？?。.!！]*$/i.test(message.trim());
@@ -272,6 +277,24 @@ async function dispatchEcho(params, recognizedIntent, modelDecision) {
     decision: {...replyOnly(finishedClue ? translate(locale, finishedClue) + ' ' + reply : reply), action}, messages: null, mode: requestMode,
     evacuationEvidence: verification.evidence, offerScan, ...(pressureCriterionVerified && {pressureCriterionVerified})
   });
+  const asksHandover = recognizedIntent === 'handover_note' ||
+    /交接(?:纸条|信|便签)|值班员.{0,8}(?:留下|纸条)|handover (?:note|letter)/i.test(message) ||
+    (room === 'research' && !snapshot.card &&
+      /^(?:纸条(?:在)?哪(?:里|儿)?|where is (?:the )?note)[？?。.!！]*$/i.test(message.trim()));
+  if (asksHandover && !handoverFollowUp) {
+    return answer(translate(locale, state.handoverRead === true
+      ? '值班交接纸条已经收录，可以在调查记录里回看。'
+      : '值班交接纸条在研究室办公桌上，靠近工作证。走近后选择「阅读交接纸条」。'));
+  }
+  const openingNote = translate(locale, '研究室的办公桌上有值班员留下的工作证和交接纸条。可以先读纸条了解封锁前的情况。');
+  const asksOpeningHelp = step ||
+    /^(?:这是哪(?:里|儿)?|(?:刚才)?发生(?:了)?什么|(?:我)?(?:现在)?(?:该|要)做什么|what happened|where am I)[？?。.!！]*$/i.test(message.trim()) ||
+    locationQuestion.test(message.trim());
+  if (room === 'research' && !snapshot.card && !snapshot.journal && state.handoverRead !== true &&
+      state.microscope?.inspecting !== true &&
+      asksOpeningHelp && !handoverFollowUp && !history.some(turn => turn.role === 'assistant' && turn.content.includes(openingNote))) {
+    return answer(translate(locale, '你在研究室。') + ' ' + openingNote);
+  }
   const passwordMention = /密码|passcode|password/i;
   const passwordSubject = text => {
     const spares = /备件格|维修柜|传感器|spare|service cabinet|locker/i.test(text);
@@ -307,9 +330,11 @@ async function dispatchEcho(params, recognizedIntent, modelDecision) {
     return answer(translate(locale, hint));
   }
   const asksReportAccess = recognizedIntent === 'incident_report' ||
-    /残页|(?:事故报告|incident report).*(?:怎么(?:看|读|开|找|拼)|如何|在哪|哪里|找不到|打不开|看不了)|(?:怎么|如何|哪里|where|how).{0,32}(?:事故报告|incident report)/i.test(message);
+    /残页|残片|(?:事故报告|incident report).*(?:怎么(?:看|读|开|找|拼)|如何|在哪|哪里|找不到|打不开|看不了)|(?:怎么|如何|哪里|where|how).{0,32}(?:事故报告|incident report)/i.test(message);
   const inspectingClue = state.microscope?.inspecting || state.photo?.inspecting || state.gauge?.inspecting;
-  if (asksReportAccess || (step && snapshot.password && !snapshot.reportConfirmed &&
+  const asksWhereNext = /^(?:那)?(?:然后|接下来|下一步)(?:我)?(?:该|要)?去(?:哪(?:里|儿)?|什么地方)[？?。.!！]*$|^where (?:do I go|should I go|to) next[?.!]*$/i.test(message.trim());
+  const asksWhatIsMissing = /^(?:我(?:现在)?)?(?:还差|还缺)(?:些)?(?:什么|哪些)(?:东西|线索)?[？?。.!！]*$|^what (?:am I still missing|else do I need|is still missing)[?.!]*$/i.test(message.trim());
+  if (asksReportAccess || ((step || asksWhereNext || asksWhatIsMissing) && snapshot.password && !snapshot.reportConfirmed &&
       (mainStep || !inspectingClue || finishedClue))) {
     return answer(reportGuidance(snapshot, locale, room));
   }
@@ -322,6 +347,27 @@ async function dispatchEcho(params, recognizedIntent, modelDecision) {
   }
   if (recognizedIntent === 'airlock_unclear' && context.airlock?.authorized) {
     return answer(translate(locale, '请说明切电时机：现在、进舱时，还是等内门关严后？'));
+  }
+  const asksMicroscopePurpose = /^(?:研究室(?:里)?的)?(?:这[台个])?显微镜(?:是)?(?:干什么(?:的)?|做什么(?:用|的)?|有什么用(?:途)?|有啥用|是什么|的作用(?:是什么)?|的用途(?:是什么)?)[？?。.!！]*$|^what (?:is (?:the |this )?microscope (?:for|used for)|does (?:the |this )?microscope do)[?.!]*$/i.test(message.trim());
+  if (recognizedIntent === 'microscope_purpose' || asksMicroscopePurpose) {
+    return answer(translate(locale, '研究室右侧的显微镜用来观察样本颗粒，确定撤离验收的颗粒标准。'));
+  }
+  const asksItemPurpose = /是什么|什么是|有什么用|有啥用|做什么用|干什么的|作用|用途|what (?:is|does).{0,45}(?:coupler|sensor)|what.{0,40}(?:used for|purpose)|what is the purpose/i.test(message);
+  const mentionsCoupler = /耦合器|冷却(?:接头|连接件)|\b(?:cooling )?coupler\b/i.test(message);
+  const mentionsSensor = /传感器|\bsensor\b/i.test(message);
+  if (recognizedIntent === 'coupler_purpose' || (asksItemPurpose && mentionsCoupler)) {
+    return answer(translate(locale, '耦合器是用来接通备用冷却回路的连接件。'));
+  }
+  if (recognizedIntent === 'sensor_purpose' || (asksItemPurpose && mentionsSensor)) {
+    return answer(translate(locale, '门位传感器是可选备件，可以在进舱前安装。安装后，我才能检测内门是否关严，并按你的指令在关严后自动切电。'));
+  }
+  if (recognizedIntent === 'coupler_location' || (mentionsCoupler &&
+      /在哪|哪里|怎么(?:拿|取|找|获得)|如何(?:拿|取|找|获得)|\bwhere\b|how (?:do I |can I |to )?(?:get|find)/i.test(message))) {
+    const hint = snapshot.coolingRestored ? '耦合器已用于接通备用冷却回路。'
+      : snapshot.coupler ? '耦合器已取得。去操作维修间的备用冷却设备。'
+        : snapshot.reportConfirmed ? '冷却耦合器在维修间的维修柜里。'
+          : '冷却耦合器在维修间的维修柜里。先在安全终端完成事故报告的确认，再去取。';
+    return answer(translate(locale, hint));
   }
   const asksSensorLocation = recognizedIntent === 'sensor_location' ||
     /传感器|\bsensor\b/i.test(message) &&
@@ -397,6 +443,45 @@ async function dispatchEcho(params, recognizedIntent, modelDecision) {
     if (blockers.length) return answer(blockers.map(hint => translate(locale, hint)).join(' '), canScan);
     return answer(translate(locale, '在出口检测台点击「启动撤离」，进入缓冲舱。'));
   }
+  function pressureNextHint(gauge) {
+    if (hasPressureBoundary(gauge)) return '实测记录齐全。可以请我确认测试结果。';
+    if (gauge?.calibrated === true) {
+      if (gauge.noteFound !== true) return '检修盒在设备走廊左上角靠墙。走近后调查盒里的便签。';
+      return gauge.mode === 'reference'
+        ? '找出相邻的通过档和拒绝档，再把结果或推得的压差上限告诉我。'
+        : '便签已经找到。切到验收测试，按便签从起始档逐档测试。';
+    }
+    if (gauge?.mode !== 'zero') return '先切到校零档，接通内部等压回路。';
+    if (gauge.offset === 0) return '表针已对准零刻度，可以确认校零。';
+    if (gauge.offset > 0) return '表针在零刻度右侧，用减号往回调。';
+    if (gauge.offset < 0) return '表针在零刻度左侧，用加号往回调。';
+    return '等压时表针应归零。';
+  }
+
+  const reviewingPassage = state.standards && snapshot.coolingRestored && snapshot.scannedA && snapshot.scannedB &&
+    !snapshot.airlock?.authorized && !snapshot.unlocked && objective.target === 'exit';
+  if (reviewingPassage && (asksWhatIsMissing || ((step || asksWhereNext) && (mainStep || !inspectingClue || finishedClue)))) {
+    const selected = missingStandards.find(id => OBJECTS[id].room === room) ?? missingStandards[0];
+    const target = OBJECTS[selected ?? 'exit'].room;
+    const door = room && nextDoor(room, target);
+    const path = door ? translate(locale, phrase('先从{direction}进入{room}。', {
+      direction: directionNames[door], room: ROOMS[ROOMS[room].doors[door]].name
+    })) : '';
+    if (!selected) {
+      const hint = state.routeReady
+        ? '三项通道验收标准均已收集。在出口检测台点击「启动撤离」。'
+        : '三项通道验收标准均已收集。到撤离区出口检测台核验并暂存路线。';
+      return answer([translate(locale, hint), path].filter(Boolean).join(' '));
+    }
+    const names = {lights: '压差标准', microscope: '颗粒标准', photo: '联锁标准'};
+    const missing = translate(locale, phrase('还缺{standards}。', {
+      standards: missingStandards.map(id => translate(locale, names[id])).join(locale === 'en' ? ', ' : '、')
+    }));
+    const deviceHint = selected === 'lights'
+      ? [room !== target && translate(locale, '压差标准在设备走廊调查。'), translate(locale, pressureNextHint(state.gauge))].filter(Boolean).join(' ')
+      : translate(locale, PASSAGE_STANDARDS[selected].location);
+    return answer([missing, path, deviceHint].filter(Boolean).join(' '));
+  }
   const pressureLocationQuestion = /压差|pressure differential/i.test(message) &&
     /哪|怎么走|where|how (?:do I|can I) get/i.test(message);
   const asksPressureStandard = pressureLocationQuestion && /标准|上限|线索|验收|limit|standard|criterion|clue/i.test(message);
@@ -430,9 +515,12 @@ async function dispatchEcho(params, recognizedIntent, modelDecision) {
   const acknowledgesGauge = room === 'service' && !state.standards?.lights && hasPressureBoundary(state.gauge) &&
     /^(?:确认|确认了|收到|已收到|明白了|知道了|了解了|我知道了|我明白了|confirm(?:ed)?|got it|understood|acknowledged)[。！!？?]*$/i.test(message.trim());
   const confirmsGaugeTest = acknowledgesGauge || /^(?:请(?:帮我)?)?(?:确认|核对|记录)(?:一下)?(?:压差线索|(?:压差)?(?:验收)?(?:测试|实测)(?:结果|记录))[。！!？?]*$|^(?:please )?(?:confirm|verify|record) (?:the )?(?:pressure clue|(?:pressure )?test results)[.?!]*$/i.test(message.trim());
+  const continuingPressureClue = step && !mainStep && !state.standards?.lights &&
+    !snapshot.airlock?.authorized && (state.gauge?.calibrated === true || state.gauge?.mode === 'zero' ||
+      (snapshot.scannedA && snapshot.scannedB && objective.target === 'exit'));
   const asksAboutGauge = room === 'service' && state.gauge && (
     /压差表|表针|校零|归零|撤离基准|验收测试|检修盒|便签|逐档|升压|等压|压差上限|(?:[AB].{0,6})压差|gauge|calibrat|zero|needle|pressure limit|reference mode|inspection box|worn note|test step|压差.{0,8}(?:上限|标准|≤|<=|不超过|小于等于)|(?:[0-9０-９一二三四五六]\s*档?\s*)(?:通过|拒绝|不通过|没通过)|\d+\s+(?:passed|failed|rejected)/i.test(message) ||
-    confirmsGaugeTest || state.gauge.inspecting === true && step && !mainStep && !finishedClue);
+    confirmsGaugeTest || continuingPressureClue || state.gauge.inspecting === true && step && !mainStep && !finishedClue);
   if (asksAboutGauge) {
     const {mode, calibrated, offset, noteFound, tested} = state.gauge;
     context.gauge = {
@@ -464,20 +552,20 @@ async function dispatchEcho(params, recognizedIntent, modelDecision) {
       if (step && state.standards?.lights === true) {
         return answer(translate(locale, '压差标准已经收入调查记录。'));
       }
-      if (hasPressureBoundary(progress)) {
-        return answer(translate(locale, '实测记录齐全。可以请我确认测试结果。'));
-      }
-      const hint = /检修盒|便签.{0,8}(?:哪|找)|inspection box|where.*note/i.test(message) || progress.calibrated && !progress.noteFound
+      const hint = /检修盒|便签.{0,8}(?:哪|找)|inspection box|where.*note/i.test(message)
         ? '检修盒在设备走廊左上角靠墙。走近后调查盒里的便签。'
-        : progress.mode === 'reference'
-          ? '找出相邻的通过档和拒绝档，再把结果或推得的压差上限告诉我。'
-          : progress.calibrated ? '便签已经找到。切到验收测试，按便签从起始档逐档测试。'
-            : progress.mode !== 'zero' ? '先切到校零档，接通内部等压回路。'
-              : progress.offset === 0 ? '表针已对准零刻度，可以确认校零。'
-                : progress.offset > 0 ? '表针在零刻度右侧，用减号往回调。'
-                  : '表针在零刻度左侧，用加号往回调。';
+        : pressureNextHint(progress);
       return answer(translate(locale, hint));
     }
+  }
+  const asksWhetherToInspectPhoto = /^(?:现在)?(?:这张|研究组)?(?:合影|合照|照片)(?:现在)?(?:要看吗|需要看吗|必须看吗|要调查吗|可以之后再看吗)[？?。.!！]*$|^(?:do I (?:need|have) to|should I) (?:look at|inspect|check) (?:the |this )?(?:team )?photo(?: now)?[?.!]*$/i.test(message.trim());
+  if (asksWhetherToInspectPhoto) {
+    if (state.standards?.photo) return answer(translate(locale, '联锁标准已经收入调查记录。'));
+    if (snapshot.coolingRestored) {
+      return answer(translate(locale, '撤离核验需要这条联锁线索。去档案室查看研究组合影的相框夹层。'));
+    }
+    return answer(translate(locale, '合影可以现在看，也可以等到撤离核验时再查。相框夹层里有联锁线索。') +
+      ' ' + translate(locale, phrase('当前主线是「{objective}」。', {objective: translate(locale, objective.label)})));
   }
   const asksAboutPhoto = room === 'archive' && state.photo && (step && state.photo.inspecting === true && !mainStep && !finishedClue ||
     /合照|合影|相框|照片|连拍|回执|门缝|联锁验收|photo|snapshot|receipt|interlock test/i.test(message));
@@ -756,7 +844,7 @@ reportFragmentRooms 是密码解锁后尚未拾取事故报告残页的房间。
   }
   const modeledIntent = decision?.intent;
   if (['next_step', 'main_step', 'evacuation_blocked', 'clue_progress', 'readings_location',
-    'scan_both', 'sensor_location', 'airlock_status', 'airlock_unclear', 'incident_report', 'terminal_password', 'spares_password', 'password_help'].includes(modeledIntent) ||
+    'scan_both', 'microscope_purpose', 'coupler_purpose', 'coupler_location', 'sensor_purpose', 'sensor_location', 'airlock_status', 'airlock_unclear', 'incident_report', 'terminal_password', 'spares_password', 'password_help', 'handover_note'].includes(modeledIntent) ||
       Object.hasOwn(scanIntents, modeledIntent) || Object.hasOwn(airlockCommands, modeledIntent)) {
     return dispatchEcho(params, modeledIntent, decision);
   }
