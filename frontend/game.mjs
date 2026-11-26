@@ -93,10 +93,10 @@ const pressed = new Map();
 const touch = new Map();
 const taskHintsPreference = 'last-protocol-task-hints';
 const echoSettingsPreference = 'last-protocol-echo-settings';
-let showTaskHints = true;
+let showTaskHints = false;
 let echoSettings = {apiBase: '', model: ''};
 try {
-  showTaskHints = localStorage.getItem(taskHintsPreference) !== 'off';
+  showTaskHints = localStorage.getItem(taskHintsPreference) === 'on';
   const saved = JSON.parse(localStorage.getItem(echoSettingsPreference));
   if (typeof saved?.apiBase === 'string' && typeof saved.model === 'string') echoSettings = saved;
 } catch {
